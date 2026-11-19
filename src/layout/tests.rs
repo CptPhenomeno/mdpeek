@@ -301,3 +301,16 @@ fn footnote_definitions_are_listed_at_the_end_of_the_document_under_a_rule() {
     assert!(t[rule + 2].starts_with("    "));
     assert!(l.rows.iter().all(|r| r.text().width() <= 18));
 }
+
+#[test]
+fn tables_nested_in_lists_and_quotes_never_exceed_the_content_width() {
+    let md = "- > | aaaaaaaaaa | bbbbbbbbbb | cccccccccc |\n  > |---|---|---|\n  > | 1 | 2 | 3 |\n";
+    for w in 20..40 {
+        let l = lay(md, w);
+        assert!(
+            l.rows
+                .iter()
+                .all(|r| r.text().width() <= usize::from(w) - 2)
+        );
+    }
+}
