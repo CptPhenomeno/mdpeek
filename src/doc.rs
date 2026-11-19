@@ -1,5 +1,8 @@
 //! Terminal-independent document model: blocks and inline spans (SPEC §3.3, §3.11).
 
+mod slug;
+pub use slug::{LinkKind, classify_link, slugify};
+
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
