@@ -4,6 +4,7 @@ use std::io;
 
 /// The three terminal states `readmd` changes and must always undo.
 pub trait TerminalOps {
+    fn disable_mouse_capture(&mut self) -> io::Result<()>;
     fn disable_raw_mode(&mut self) -> io::Result<()>;
     fn leave_alternate_screen(&mut self) -> io::Result<()>;
     fn show_cursor(&mut self) -> io::Result<()>;
@@ -12,6 +13,7 @@ pub trait TerminalOps {
 /// Undo every terminal change; all steps run even if one fails.
 pub fn restore(ops: &mut impl TerminalOps) -> io::Result<()> {
     let steps = [
+        ops.disable_mouse_capture(),
         ops.leave_alternate_screen(),
         ops.disable_raw_mode(),
         ops.show_cursor(),
@@ -32,6 +34,10 @@ pub fn install_panic_hook(restore_fn: fn()) {
 struct CrosstermOps;
 
 impl TerminalOps for CrosstermOps {
+    fn disable_mouse_capture(&mut self) -> io::Result<()> {
+        crossterm::execute!(io::stdout(), crossterm::event::DisableMouseCapture)
+    }
+
     fn disable_raw_mode(&mut self) -> io::Result<()> {
         crossterm::terminal::disable_raw_mode()
     }
@@ -61,6 +67,7 @@ impl TerminalGuard {
         crossterm::execute!(
             io::stdout(),
             crossterm::terminal::EnterAlternateScreen,
+            crossterm::event::EnableMouseCapture,
             crossterm::cursor::Hide
         )?;
         Ok(guard)

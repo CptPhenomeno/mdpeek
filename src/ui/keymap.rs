@@ -26,10 +26,89 @@ pub struct Binding {
     pub description: &'static str,
 }
 
-/// Document-focus bindings (SPEC §3.8).
-pub const BINDINGS: &[Binding] = &[];
+const NONE: KeyModifiers = KeyModifiers::NONE;
+
+const fn bind(
+    code: KeyCode,
+    modifiers: KeyModifiers,
+    action: Action,
+    label: &'static str,
+    description: &'static str,
+) -> Binding {
+    Binding {
+        code,
+        modifiers,
+        action,
+        label,
+        description,
+    }
+}
+
+/// Document-focus bindings (SPEC §3.8); later keys and the F1 help extend this table.
+pub const BINDINGS: &[Binding] = &[
+    bind(
+        KeyCode::Up,
+        NONE,
+        Action::ScrollUp,
+        "Up",
+        "Scroll one row up",
+    ),
+    bind(
+        KeyCode::Down,
+        NONE,
+        Action::ScrollDown,
+        "Down",
+        "Scroll one row down",
+    ),
+    bind(
+        KeyCode::PageUp,
+        NONE,
+        Action::PageUp,
+        "PgUp",
+        "Scroll one page up",
+    ),
+    bind(
+        KeyCode::PageDown,
+        NONE,
+        Action::PageDown,
+        "PgDn",
+        "Scroll one page down",
+    ),
+    bind(
+        KeyCode::Char(' '),
+        NONE,
+        Action::PageDown,
+        "Space",
+        "Scroll one page down",
+    ),
+    bind(
+        KeyCode::Home,
+        NONE,
+        Action::Top,
+        "Home",
+        "Top of the document",
+    ),
+    bind(
+        KeyCode::End,
+        NONE,
+        Action::Bottom,
+        "End",
+        "Bottom of the document",
+    ),
+    bind(
+        KeyCode::Char('q'),
+        KeyModifiers::CONTROL,
+        Action::Quit,
+        "Ctrl+Q",
+        "Quit",
+    ),
+    bind(KeyCode::F(10), NONE, Action::Quit, "F10", "Quit"),
+];
 
 /// Action bound to `key`, if any.
-pub fn action_for(_key: KeyEvent) -> Option<Action> {
-    None
+pub fn action_for(key: KeyEvent) -> Option<Action> {
+    BINDINGS
+        .iter()
+        .find(|b| b.code == key.code && b.modifiers == key.modifiers)
+        .map(|b| b.action)
 }
