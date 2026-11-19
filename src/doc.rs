@@ -1,9 +1,10 @@
 //! Terminal-independent document model: blocks and inline spans (SPEC §3.3, §3.11).
 
+use std::collections::HashMap;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
 /// A parsed file: a block tree plus the flags the viewer needs (SPEC §4.3, §4.4).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -13,6 +14,48 @@ pub struct Document {
     pub invalid_utf8: bool,
     /// The input holds no content at all.
     pub empty: bool,
+    /// Footnote definitions in numbering order (first use of their reference).
+    pub footnotes: Vec<Footnote>,
+}
+
+/// A footnote definition, shown at the end of the document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Footnote {
+    pub number: usize,
+    pub blocks: Vec<Block>,
+}
+
+/// Column alignment from the table delimiter row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Align {
+    Default,
+    Left,
+    Center,
+    Right,
+}
+
+pub type Cell = Vec<Inline>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Table {
+    pub align: Vec<Align>,
+    pub header: Vec<Cell>,
+    pub rows: Vec<Vec<Cell>>,
+}
+
+/// Where an image lives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageTarget {
+    /// File path, resolved against the document's directory when one is known.
+    Local(PathBuf),
+    /// `http` or `https` URL.
+    Remote(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Image {
+    pub alt: String,
+    pub target: ImageTarget,
 }
 
 /// A block-level element. More variants (tables, footnotes, images) can be added later.
@@ -33,6 +76,7 @@ pub enum Block {
     Html(String),
     /// Raw Mermaid source of a diagram.
     Diagram(String),
+    Table(Table),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +100,9 @@ pub enum Inline {
     Html(String),
     SoftBreak,
     HardBreak,
+    /// Footnote reference, numbered by first use.
+    FootnoteRef(usize),
+    Image(Image),
 }
 
 /// A run of text with uniform style and an optional link target.
@@ -96,16 +143,22 @@ impl Source {
 impl Document {
     /// Decode `bytes` lossily and parse them as `source`.
     pub fn from_bytes(bytes: &[u8], source: Source) -> Document {
+        Document::from_bytes_in(bytes, source, None)
+    }
+
+    /// Like `from_bytes`; relative image paths are resolved against `base_dir`.
+    pub fn from_bytes_in(bytes: &[u8], source: Source, base_dir: Option<&Path>) -> Document {
         let invalid_utf8 = std::str::from_utf8(bytes).is_err();
         let text = String::from_utf8_lossy(bytes);
         let empty = text.is_empty();
-        let blocks = match source {
-            _ if empty => Vec::new(),
-            Source::Markdown => parse_markdown(&text),
-            Source::Mermaid => vec![Block::Diagram(text.into_owned())],
+        let (blocks, footnotes) = match source {
+            _ if empty => (Vec::new(), Vec::new()),
+            Source::Markdown => parse_markdown(&text, base_dir),
+            Source::Mermaid => (vec![Block::Diagram(text.into_owned())], Vec::new()),
         };
         Document {
             blocks,
+            footnotes,
             invalid_utf8,
             empty,
         }
@@ -113,7 +166,12 @@ impl Document {
 
     pub fn from_path(path: &Path) -> io::Result<Document> {
         let bytes = std::fs::read(path)?;
-        Ok(Document::from_bytes(&bytes, Source::from_path(path)))
+        let base = path.parent().filter(|p| !p.as_os_str().is_empty());
+        Ok(Document::from_bytes_in(
+            &bytes,
+            Source::from_path(path),
+            base,
+        ))
     }
 }
 
@@ -134,6 +192,13 @@ enum Frame {
     Quote(Vec<Block>),
     Code(Option<String>, String),
     Html(String),
+    Table(Vec<Align>, Vec<Cell>, Vec<Vec<Cell>>),
+    Head(Vec<Cell>),
+    Row(Vec<Cell>),
+    Cell(Vec<Inline>),
+    Footnote(String, Vec<Block>),
+    /// Image target and the alt text collected so far.
+    Image(String, String),
     /// Container whose events are not modelled yet; its content is dropped.
     Skipped,
 }
@@ -142,20 +207,29 @@ struct Builder {
     stack: Vec<Frame>,
     style: Style,
     link: Vec<String>,
+    base_dir: Option<PathBuf>,
+    /// Footnote label to number, assigned by first use.
+    numbers: HashMap<String, usize>,
+    footnotes: Vec<Footnote>,
 }
 
-fn parse_markdown(text: &str) -> Vec<Block> {
+fn parse_markdown(text: &str, base_dir: Option<&Path>) -> (Vec<Block>, Vec<Footnote>) {
     let mut b = Builder {
         stack: vec![Frame::Root(Vec::new())],
         style: Style::default(),
         link: Vec::new(),
+        base_dir: base_dir.map(Path::to_path_buf),
+        numbers: HashMap::new(),
+        footnotes: Vec::new(),
     };
     for event in Parser::new_ext(text, options()) {
         b.event(event);
     }
+    let mut footnotes = std::mem::take(&mut b.footnotes);
+    footnotes.sort_by_key(|f| f.number);
     match b.stack.pop() {
-        Some(Frame::Root(blocks)) => blocks,
-        _ => Vec::new(),
+        Some(Frame::Root(blocks)) => (blocks, footnotes),
+        _ => (Vec::new(), footnotes),
     }
 }
 
@@ -183,6 +257,10 @@ impl Builder {
             Event::SoftBreak => self.push_inline(Inline::SoftBreak),
             Event::HardBreak => self.push_inline(Inline::HardBreak),
             Event::Rule => self.push_block(Block::Rule),
+            Event::FootnoteReference(label) => {
+                let n = self.footnote_number(&label);
+                self.push_inline(Inline::FootnoteRef(n));
+            }
             Event::TaskListMarker(checked) => {
                 if let Some(Frame::Item(task, _)) = self.stack.last_mut() {
                     *task = Some(checked);
@@ -211,7 +289,25 @@ impl Builder {
             Tag::Strong => return self.style.strong = true,
             Tag::Strikethrough => return self.style.strikethrough = true,
             Tag::Link { dest_url, .. } => return self.link.push(dest_url.into_string()),
-            // Tables, footnotes, images, ...: not modelled yet.
+            Tag::Table(aligns) => Frame::Table(
+                aligns
+                    .into_iter()
+                    .map(|a| match a {
+                        Alignment::None => Align::Default,
+                        Alignment::Left => Align::Left,
+                        Alignment::Center => Align::Center,
+                        Alignment::Right => Align::Right,
+                    })
+                    .collect(),
+                Vec::new(),
+                Vec::new(),
+            ),
+            Tag::TableHead => Frame::Head(Vec::new()),
+            Tag::TableRow => Frame::Row(Vec::new()),
+            Tag::TableCell => Frame::Cell(Vec::new()),
+            Tag::FootnoteDefinition(label) => Frame::Footnote(label.into_string(), Vec::new()),
+            Tag::Image { dest_url, .. } => Frame::Image(dest_url.into_string(), String::new()),
+            // Anything else (definition lists, metadata, ...): not modelled yet.
             _ => Frame::Skipped,
         };
         self.stack.push(frame);
@@ -232,7 +328,46 @@ impl Builder {
             Frame::Paragraph(c) => self.push_block(Block::Paragraph(c)),
             Frame::Heading(level, content) => self.push_block(Block::Heading { level, content }),
             Frame::Quote(blocks) => self.push_block(Block::BlockQuote(blocks)),
-            Frame::Code(lang, text) => self.push_block(Block::CodeBlock { lang, text }),
+            Frame::Code(lang, text) => {
+                if lang
+                    .as_deref()
+                    .is_some_and(|l| l.eq_ignore_ascii_case("mermaid"))
+                {
+                    self.push_block(Block::Diagram(text));
+                } else {
+                    self.push_block(Block::CodeBlock { lang, text });
+                }
+            }
+            Frame::Table(align, header, rows) => {
+                self.push_block(Block::Table(Table {
+                    align,
+                    header,
+                    rows,
+                }));
+            }
+            Frame::Head(cells) => {
+                if let Some(Frame::Table(_, header, _)) = self.stack.last_mut() {
+                    *header = cells;
+                }
+            }
+            Frame::Row(cells) => {
+                if let Some(Frame::Table(_, _, rows)) = self.stack.last_mut() {
+                    rows.push(cells);
+                }
+            }
+            Frame::Cell(content) => {
+                if let Some(Frame::Head(cells) | Frame::Row(cells)) = self.stack.last_mut() {
+                    cells.push(content);
+                }
+            }
+            Frame::Footnote(label, blocks) => {
+                let number = self.footnote_number(&label);
+                self.footnotes.push(Footnote { number, blocks });
+            }
+            Frame::Image(dest, alt) => {
+                let target = self.image_target(&dest);
+                self.push_inline(Inline::Image(Image { alt, target }));
+            }
             Frame::Html(t) => self.push_block(Block::Html(t)),
             Frame::List(start, items) => self.push_block(Block::List(List { start, items })),
             Frame::Item(task, blocks) => {
@@ -244,7 +379,28 @@ impl Builder {
         }
     }
 
+    fn footnote_number(&mut self, label: &str) -> usize {
+        let next = self.numbers.len() + 1;
+        *self.numbers.entry(label.to_owned()).or_insert(next)
+    }
+
+    fn image_target(&self, dest: &str) -> ImageTarget {
+        let lower = dest.to_ascii_lowercase();
+        if lower.starts_with("http://") || lower.starts_with("https://") {
+            return ImageTarget::Remote(dest.to_owned());
+        }
+        let path = PathBuf::from(dest);
+        match &self.base_dir {
+            Some(base) => ImageTarget::Local(base.join(path)),
+            None => ImageTarget::Local(path),
+        }
+    }
+
     fn push_span(&mut self, text: &str, extra: Style) {
+        if let Some(Frame::Image(_, alt)) = self.stack.last_mut() {
+            alt.push_str(text);
+            return;
+        }
         let style = Style {
             emphasis: self.style.emphasis | extra.emphasis,
             strong: self.style.strong | extra.strong,
@@ -262,8 +418,8 @@ impl Builder {
     /// Append to the open text block; tight list items have none, so open a paragraph.
     fn push_inline(&mut self, inline: Inline) {
         match self.stack.last_mut() {
-            Some(Frame::Paragraph(c) | Frame::Heading(_, c)) => c.push(inline),
-            Some(Frame::Item(_, blocks) | Frame::Quote(blocks)) => {
+            Some(Frame::Paragraph(c) | Frame::Heading(_, c) | Frame::Cell(c)) => c.push(inline),
+            Some(Frame::Item(_, blocks) | Frame::Quote(blocks) | Frame::Footnote(_, blocks)) => {
                 if let Some(Block::Paragraph(c)) = blocks.last_mut() {
                     c.push(inline);
                 } else {
@@ -275,7 +431,9 @@ impl Builder {
     }
 
     fn push_block(&mut self, block: Block) {
-        if let Some(Frame::Root(b) | Frame::Item(_, b) | Frame::Quote(b)) = self.stack.last_mut() {
+        if let Some(Frame::Root(b) | Frame::Item(_, b) | Frame::Quote(b) | Frame::Footnote(_, b)) =
+            self.stack.last_mut()
+        {
             b.push(block);
         }
     }
@@ -544,5 +702,114 @@ mod tests {
         };
         assert_eq!(p.len(), 3);
         assert!(matches!(blocks[1], Block::List(_)));
+    }
+
+    fn cell(t: &str) -> Cell {
+        vec![plain(t)]
+    }
+
+    #[test]
+    fn table_keeps_header_rows_and_alignment() {
+        let doc = md(
+            "| a | b | c | d |\n|:--|:-:|--:|---|\n| 1 | 2 | 3 | 4 |\n| 5 | 6 | 7 | 8 |\n\nafter\n",
+        );
+        assert_eq!(doc.blocks.len(), 2);
+        let Block::Table(t) = &doc.blocks[0] else {
+            panic!("{:?}", doc.blocks[0])
+        };
+        assert_eq!(
+            t.align,
+            vec![Align::Left, Align::Center, Align::Right, Align::Default]
+        );
+        assert_eq!(t.header, vec![cell("a"), cell("b"), cell("c"), cell("d")]);
+        assert_eq!(t.rows.len(), 2);
+        assert_eq!(t.rows[1], vec![cell("5"), cell("6"), cell("7"), cell("8")]);
+    }
+
+    #[test]
+    fn footnote_refs_numbered_by_first_use() {
+        let doc = md("a[^b] c[^a] d[^b]\n\n[^a]: A\n[^b]: B\n");
+        let Block::Paragraph(p) = &doc.blocks[0] else {
+            panic!()
+        };
+        let refs: Vec<_> = p
+            .iter()
+            .filter_map(|i| match i {
+                Inline::FootnoteRef(n) => Some(*n),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(refs, vec![1, 2, 1]);
+    }
+
+    #[test]
+    fn footnote_definitions_are_collected() {
+        let doc = md("a[^b] c[^a]\n\n[^a]: A\n[^b]: B\n\nlast\n");
+        assert_eq!(doc.blocks.len(), 2);
+        assert_eq!(doc.footnotes.len(), 2);
+        assert_eq!(doc.footnotes[0].number, 1);
+        assert_eq!(
+            doc.footnotes[0].blocks,
+            vec![Block::Paragraph(vec![plain("B")])]
+        );
+        assert_eq!(doc.footnotes[1].number, 2);
+        assert_eq!(
+            doc.footnotes[1].blocks,
+            vec![Block::Paragraph(vec![plain("A")])]
+        );
+    }
+
+    fn first_image(doc: &Document) -> Image {
+        let Block::Paragraph(p) = &doc.blocks[0] else {
+            panic!()
+        };
+        p.iter()
+            .find_map(|i| match i {
+                Inline::Image(img) => Some(img.clone()),
+                _ => None,
+            })
+            .expect("no image")
+    }
+
+    #[test]
+    fn relative_image_resolved_against_document_dir() {
+        let base = Path::new("/docs/sub");
+        let doc = Document::from_bytes_in(b"![pic](img/a.png)", Source::Markdown, Some(base));
+        let img = first_image(&doc);
+        assert_eq!(img.alt, "pic");
+        assert_eq!(
+            img.target,
+            ImageTarget::Local(PathBuf::from("/docs/sub/img/a.png"))
+        );
+        let abs = Document::from_bytes_in(b"![p](/abs/a.png)", Source::Markdown, Some(base));
+        assert_eq!(
+            first_image(&abs).target,
+            ImageTarget::Local(PathBuf::from("/abs/a.png"))
+        );
+    }
+
+    #[test]
+    fn http_images_are_remote_with_alt() {
+        for url in ["http://x.io/a.png", "https://x.io/b.png"] {
+            let doc = md(&format!("![a *b* `c`]({url})"));
+            let img = first_image(&doc);
+            assert_eq!(img.alt, "a b c");
+            assert_eq!(img.target, ImageTarget::Remote(url.into()));
+        }
+    }
+
+    #[test]
+    fn mermaid_fence_is_diagram() {
+        let doc = md("```mermaid\ngraph TD\n  A-->B\n```\n\nafter\n");
+        assert_eq!(doc.blocks[0], Block::Diagram("graph TD\n  A-->B\n".into()));
+        assert_eq!(doc.blocks.len(), 2);
+    }
+
+    #[test]
+    fn mermaid_fence_case_insensitive() {
+        for tag in ["Mermaid", "MERMAID"] {
+            let doc = md(&format!("```{tag}\ngraph TD\n```\n"));
+            assert_eq!(doc.blocks, vec![Block::Diagram("graph TD\n".into())]);
+        }
     }
 }
