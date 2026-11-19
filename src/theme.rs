@@ -21,10 +21,10 @@ pub const LINE: Color = Color::Rgb(88, 91, 112);
 pub const ACCENT: Color = Color::Rgb(137, 220, 235);
 /// Link foreground.
 pub const LINK: Color = Color::Rgb(97, 175, 239);
-/// Strong text foreground (stub).
-pub const STRONG: Color = FG;
-/// Emphasis foreground (stub).
-pub const EMPHASIS: Color = FG;
+/// Strong text foreground: brighter than `FG`, so bold shows without a bold face.
+pub const STRONG: Color = Color::Rgb(255, 255, 255);
+/// Emphasis foreground: a warm tint, so italic shows without an italic face.
+pub const EMPHASIS: Color = Color::Rgb(249, 226, 175);
 /// Background of inline code.
 pub const CODE_BG: Color = Color::Rgb(49, 50, 68);
 
@@ -72,13 +72,24 @@ pub fn status() -> Style {
 }
 
 /// Terminal style of a model span, layered over `base`.
+///
+/// The strong and emphasis tints replace the body foreground only: over any
+/// other base (headings, table headers) the base colour is kept and only the
+/// modifiers combine. Strong wins over emphasis when both apply.
 pub fn inline(base: Style, style: InlineStyle, linked: bool) -> Style {
     let mut out = base;
+    let tint = base.fg == Some(FG);
     if style.emphasis {
         out = out.add_modifier(Modifier::ITALIC);
+        if tint {
+            out = out.fg(EMPHASIS);
+        }
     }
     if style.strong {
         out = out.add_modifier(Modifier::BOLD);
+        if tint {
+            out = out.fg(STRONG);
+        }
     }
     if style.strikethrough {
         out = out.add_modifier(Modifier::CROSSED_OUT);

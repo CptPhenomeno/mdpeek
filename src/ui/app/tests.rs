@@ -201,8 +201,8 @@ fn f10_and_ctrl_q_quit() {
 #[test]
 fn snapshot_of_a_short_document_with_headings_paragraphs_and_inline_styles() {
     let md = "# Title\n\nSome *emphasis*, **strong** and `code` text.\n\n## Section\n\nA [link](https://example.com) and ~~gone~~.\n";
-    let mut app = app_from(md, 40, 12);
-    let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+    let mut app = app_from(md, 40, 14);
+    let mut terminal = Terminal::new(TestBackend::new(40, 14)).unwrap();
     terminal.draw(|f| app.render(f)).unwrap();
     insta::assert_snapshot!(terminal.backend());
 }

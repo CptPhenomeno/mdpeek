@@ -65,6 +65,7 @@ fn h1_and_h2_are_followed_by_a_rule_and_h3_is_not() {
             RowKind::Heading(1),
             RowKind::Rule,
             RowKind::Blank,
+            RowKind::Blank,
             RowKind::Heading(2),
             RowKind::Rule,
             RowKind::Blank,
