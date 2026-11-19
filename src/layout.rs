@@ -3,11 +3,11 @@
 use ratatui::style::Style;
 
 use crate::doc::{Block, Document, Inline, List};
+use crate::theme;
 use unicode_width::UnicodeWidthChar;
 use wrap::{Piece, chunk, wrap};
 
 mod table;
-mod theme;
 mod wrap;
 
 #[cfg(test)]
@@ -185,7 +185,7 @@ fn hang_rows(mut rows: Vec<Row>, index: usize, marker: &str, hang: usize, max: u
         } else {
             " ".repeat(hang)
         };
-        row.spans.insert(0, plain(&lead, Style::default()));
+        row.spans.insert(0, plain(&lead, theme::body()));
         clip(row, max);
     }
     rows
@@ -249,7 +249,7 @@ fn list_rows(list: &List, index: usize, content: usize) -> Vec<Row> {
             // The first row carries the marker in place of its alignment padding.
             rows[0].spans[0].text = marker;
         } else {
-            let lone = plain(marker.trim_end(), Style::default());
+            let lone = plain(marker.trim_end(), theme::body());
             rows.insert(
                 0,
                 Row {
@@ -298,10 +298,9 @@ fn block_rows(block: &Block, index: usize, content: usize) -> Vec<Row> {
         }],
     };
     match block {
-        Block::Paragraph(inlines) => make(
-            RowKind::Text,
-            wrap(pieces(inlines, Style::default()), content),
-        ),
+        Block::Paragraph(inlines) => {
+            make(RowKind::Text, wrap(pieces(inlines, theme::body()), content))
+        }
         Block::Heading { level, content: c } => {
             let mut rows = make(
                 RowKind::Heading(*level),

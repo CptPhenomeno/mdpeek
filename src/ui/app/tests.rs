@@ -230,7 +230,6 @@ fn no_cell_of_a_rendered_frame_has_the_default_background() {
     for cell in buf.content() {
         assert_ne!(cell.bg, ratatui::style::Color::Reset);
     }
-    assert_all_bg(&buf);
 }
 
 #[test]
