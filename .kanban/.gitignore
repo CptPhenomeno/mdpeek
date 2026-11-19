@@ -1,0 +1,4 @@
+# The board database is local; config.toml is versioned.
+kb.db
+kb.db-wal
+kb.db-shm
