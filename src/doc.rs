@@ -1,7 +1,8 @@
 //! Terminal-independent document model: blocks and inline spans (SPEC §3.3, §3.11).
 
+use std::collections::HashMap;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
@@ -13,6 +14,48 @@ pub struct Document {
     pub invalid_utf8: bool,
     /// The input holds no content at all.
     pub empty: bool,
+    /// Footnote definitions in numbering order (first use of their reference).
+    pub footnotes: Vec<Footnote>,
+}
+
+/// A footnote definition, shown at the end of the document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Footnote {
+    pub number: usize,
+    pub blocks: Vec<Block>,
+}
+
+/// Column alignment from the table delimiter row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Align {
+    Default,
+    Left,
+    Center,
+    Right,
+}
+
+pub type Cell = Vec<Inline>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Table {
+    pub align: Vec<Align>,
+    pub header: Vec<Cell>,
+    pub rows: Vec<Vec<Cell>>,
+}
+
+/// Where an image lives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageTarget {
+    /// File path, resolved against the document's directory when one is known.
+    Local(PathBuf),
+    /// `http` or `https` URL.
+    Remote(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Image {
+    pub alt: String,
+    pub target: ImageTarget,
 }
 
 /// A block-level element. More variants (tables, footnotes, images) can be added later.
@@ -33,6 +76,7 @@ pub enum Block {
     Html(String),
     /// Raw Mermaid source of a diagram.
     Diagram(String),
+    Table(Table),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +100,9 @@ pub enum Inline {
     Html(String),
     SoftBreak,
     HardBreak,
+    /// Footnote reference, numbered by first use.
+    FootnoteRef(usize),
+    Image(Image),
 }
 
 /// A run of text with uniform style and an optional link target.
@@ -96,16 +143,22 @@ impl Source {
 impl Document {
     /// Decode `bytes` lossily and parse them as `source`.
     pub fn from_bytes(bytes: &[u8], source: Source) -> Document {
+        Document::from_bytes_in(bytes, source, None)
+    }
+
+    /// Like `from_bytes`; relative image paths are resolved against `base_dir`.
+    pub fn from_bytes_in(bytes: &[u8], source: Source, base_dir: Option<&Path>) -> Document {
         let invalid_utf8 = std::str::from_utf8(bytes).is_err();
         let text = String::from_utf8_lossy(bytes);
         let empty = text.is_empty();
-        let blocks = match source {
-            _ if empty => Vec::new(),
-            Source::Markdown => parse_markdown(&text),
-            Source::Mermaid => vec![Block::Diagram(text.into_owned())],
+        let (blocks, footnotes) = match source {
+            _ if empty => (Vec::new(), Vec::new()),
+            Source::Markdown => parse_markdown(&text, base_dir),
+            Source::Mermaid => (vec![Block::Diagram(text.into_owned())], Vec::new()),
         };
         Document {
             blocks,
+            footnotes,
             invalid_utf8,
             empty,
         }
@@ -113,7 +166,12 @@ impl Document {
 
     pub fn from_path(path: &Path) -> io::Result<Document> {
         let bytes = std::fs::read(path)?;
-        Ok(Document::from_bytes(&bytes, Source::from_path(path)))
+        let base = path.parent().filter(|p| !p.as_os_str().is_empty());
+        Ok(Document::from_bytes_in(
+            &bytes,
+            Source::from_path(path),
+            base,
+        ))
     }
 }
 
@@ -144,7 +202,7 @@ struct Builder {
     link: Vec<String>,
 }
 
-fn parse_markdown(text: &str) -> Vec<Block> {
+fn parse_markdown(text: &str, _base_dir: Option<&Path>) -> (Vec<Block>, Vec<Footnote>) {
     let mut b = Builder {
         stack: vec![Frame::Root(Vec::new())],
         style: Style::default(),
@@ -154,8 +212,8 @@ fn parse_markdown(text: &str) -> Vec<Block> {
         b.event(event);
     }
     match b.stack.pop() {
-        Some(Frame::Root(blocks)) => blocks,
-        _ => Vec::new(),
+        Some(Frame::Root(blocks)) => (blocks, Vec::new()),
+        _ => (Vec::new(), Vec::new()),
     }
 }
 
@@ -544,5 +602,114 @@ mod tests {
         };
         assert_eq!(p.len(), 3);
         assert!(matches!(blocks[1], Block::List(_)));
+    }
+
+    fn cell(t: &str) -> Cell {
+        vec![plain(t)]
+    }
+
+    #[test]
+    fn table_keeps_header_rows_and_alignment() {
+        let doc = md(
+            "| a | b | c | d |\n|:--|:-:|--:|---|\n| 1 | 2 | 3 | 4 |\n| 5 | 6 | 7 | 8 |\n\nafter\n",
+        );
+        assert_eq!(doc.blocks.len(), 2);
+        let Block::Table(t) = &doc.blocks[0] else {
+            panic!("{:?}", doc.blocks[0])
+        };
+        assert_eq!(
+            t.align,
+            vec![Align::Left, Align::Center, Align::Right, Align::Default]
+        );
+        assert_eq!(t.header, vec![cell("a"), cell("b"), cell("c"), cell("d")]);
+        assert_eq!(t.rows.len(), 2);
+        assert_eq!(t.rows[1], vec![cell("5"), cell("6"), cell("7"), cell("8")]);
+    }
+
+    #[test]
+    fn footnote_refs_numbered_by_first_use() {
+        let doc = md("a[^b] c[^a] d[^b]\n\n[^a]: A\n[^b]: B\n");
+        let Block::Paragraph(p) = &doc.blocks[0] else {
+            panic!()
+        };
+        let refs: Vec<_> = p
+            .iter()
+            .filter_map(|i| match i {
+                Inline::FootnoteRef(n) => Some(*n),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(refs, vec![1, 2, 1]);
+    }
+
+    #[test]
+    fn footnote_definitions_are_collected() {
+        let doc = md("a[^b] c[^a]\n\n[^a]: A\n[^b]: B\n\nlast\n");
+        assert_eq!(doc.blocks.len(), 2);
+        assert_eq!(doc.footnotes.len(), 2);
+        assert_eq!(doc.footnotes[0].number, 1);
+        assert_eq!(
+            doc.footnotes[0].blocks,
+            vec![Block::Paragraph(vec![plain("B")])]
+        );
+        assert_eq!(doc.footnotes[1].number, 2);
+        assert_eq!(
+            doc.footnotes[1].blocks,
+            vec![Block::Paragraph(vec![plain("A")])]
+        );
+    }
+
+    fn first_image(doc: &Document) -> Image {
+        let Block::Paragraph(p) = &doc.blocks[0] else {
+            panic!()
+        };
+        p.iter()
+            .find_map(|i| match i {
+                Inline::Image(img) => Some(img.clone()),
+                _ => None,
+            })
+            .expect("no image")
+    }
+
+    #[test]
+    fn relative_image_resolved_against_document_dir() {
+        let base = Path::new("/docs/sub");
+        let doc = Document::from_bytes_in(b"![pic](img/a.png)", Source::Markdown, Some(base));
+        let img = first_image(&doc);
+        assert_eq!(img.alt, "pic");
+        assert_eq!(
+            img.target,
+            ImageTarget::Local(PathBuf::from("/docs/sub/img/a.png"))
+        );
+        let abs = Document::from_bytes_in(b"![p](/abs/a.png)", Source::Markdown, Some(base));
+        assert_eq!(
+            first_image(&abs).target,
+            ImageTarget::Local(PathBuf::from("/abs/a.png"))
+        );
+    }
+
+    #[test]
+    fn http_images_are_remote_with_alt() {
+        for url in ["http://x.io/a.png", "https://x.io/b.png"] {
+            let doc = md(&format!("![a *b* `c`]({url})"));
+            let img = first_image(&doc);
+            assert_eq!(img.alt, "a b c");
+            assert_eq!(img.target, ImageTarget::Remote(url.into()));
+        }
+    }
+
+    #[test]
+    fn mermaid_fence_is_diagram() {
+        let doc = md("```mermaid\ngraph TD\n  A-->B\n```\n\nafter\n");
+        assert_eq!(doc.blocks[0], Block::Diagram("graph TD\n  A-->B\n".into()));
+        assert_eq!(doc.blocks.len(), 2);
+    }
+
+    #[test]
+    fn mermaid_fence_case_insensitive() {
+        for tag in ["Mermaid", "MERMAID"] {
+            let doc = md(&format!("```{tag}\ngraph TD\n```\n"));
+            assert_eq!(doc.blocks, vec![Block::Diagram("graph TD\n".into())]);
+        }
     }
 }
