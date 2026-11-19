@@ -18,19 +18,101 @@ pub struct VisiblePart {
 
 /// Visible part of a slot whose first row sits at `slot_top` (screen
 /// coordinates, may be negative or beyond the pane) and spans `slot_rows`.
-pub fn visible_part(_slot_top: i32, _slot_rows: u16, _pane: Rect) -> Option<VisiblePart> {
-    unimplemented!("spike")
+pub fn visible_part(slot_top: i32, slot_rows: u16, pane: Rect) -> Option<VisiblePart> {
+    let top = slot_top.max(i32::from(pane.top()));
+    let bottom = (slot_top + i32::from(slot_rows)).min(i32::from(pane.bottom()));
+    if bottom <= top {
+        return None;
+    }
+    // Both values are bounded by `slot_rows` and the pane, so they fit in u16.
+    Some(VisiblePart {
+        skip_rows: u16::try_from(top - slot_top).ok()?,
+        rows: u16::try_from(bottom - top).ok()?,
+        screen_y: u16::try_from(top).ok()?,
+    })
 }
 
 /// Source pixel rows `(y, height)` that correspond to the visible part of a
 /// slot, for the "crop then encode" strategy.
-pub fn source_crop(_image_height: u32, _slot_rows: u16, _part: &VisiblePart) -> (u32, u32) {
-    unimplemented!("spike")
+pub fn source_crop(image_height: u32, slot_rows: u16, part: &VisiblePart) -> (u32, u32) {
+    let rows = u32::from(slot_rows.max(1));
+    let start = image_height * u32::from(part.skip_rows) / rows;
+    let end = image_height * u32::from(part.skip_rows + part.rows) / rows;
+    (start, end - start)
 }
 
 /// The pane area minus the overlay rectangles: the cells a picture may cover.
-pub fn exclude_overlays(_area: Rect, _overlays: &[Rect]) -> Vec<Rect> {
-    unimplemented!("spike")
+pub fn exclude_overlays(area: Rect, overlays: &[Rect]) -> Vec<Rect> {
+    let mut pieces = vec![area];
+    for overlay in overlays {
+        pieces = pieces
+            .into_iter()
+            .flat_map(|piece| subtract(piece, *overlay))
+            .collect();
+    }
+    pieces
+}
+
+/// `a` minus `b` as at most four disjoint rectangles (top, bottom, left, right).
+fn subtract(a: Rect, b: Rect) -> Vec<Rect> {
+    let cut = a.intersection(b);
+    if cut.is_empty() {
+        return vec![a];
+    }
+    let mut out = Vec::with_capacity(4);
+    if cut.top() > a.top() {
+        out.push(Rect::new(a.x, a.y, a.width, cut.top() - a.top()));
+    }
+    if cut.bottom() < a.bottom() {
+        out.push(Rect::new(
+            a.x,
+            cut.bottom(),
+            a.width,
+            a.bottom() - cut.bottom(),
+        ));
+    }
+    if cut.left() > a.left() {
+        out.push(Rect::new(a.x, cut.y, cut.left() - a.left(), cut.height));
+    }
+    if cut.right() < a.right() {
+        out.push(Rect::new(
+            cut.right(),
+            cut.y,
+            a.right() - cut.right(),
+            cut.height,
+        ));
+    }
+    out
+}
+
+/// Row bands of the visible part that no overlay touches. Pixel protocols
+/// (Sixel, iTerm2) cannot skip individual columns of a row, so a row that an
+/// overlay crosses is hidden whole.
+pub fn clear_row_bands(request: &PictureRequest<'_>, part: &VisiblePart) -> Vec<VisiblePart> {
+    let x0 = request.slot_left;
+    let x1 = request.slot_left.saturating_add(request.slot_cols);
+    let blocked = |y: u16| {
+        request
+            .overlays
+            .iter()
+            .any(|o| o.top() <= y && y < o.bottom() && o.left() < x1 && x0 < o.right())
+    };
+    let mut bands: Vec<VisiblePart> = Vec::new();
+    for i in 0..part.rows {
+        let y = part.screen_y + i;
+        if blocked(y) {
+            continue;
+        }
+        match bands.last_mut() {
+            Some(b) if b.screen_y + b.rows == y => b.rows += 1,
+            _ => bands.push(VisiblePart {
+                skip_rows: part.skip_rows + i,
+                rows: 1,
+                screen_y: y,
+            }),
+        }
+    }
+    bands
 }
 
 /// Everything a renderer needs to draw one picture slot.
@@ -61,8 +143,28 @@ pub struct PlaceholderRenderer {
 }
 
 impl PictureRenderer for PlaceholderRenderer {
-    fn render(&mut self, _request: &PictureRequest<'_>, _buf: &mut Buffer) {
-        unimplemented!("spike")
+    fn render(&mut self, request: &PictureRequest<'_>, buf: &mut Buffer) {
+        let Some(part) = visible_part(request.slot_top, request.slot_rows, request.pane) else {
+            return;
+        };
+        let area = Rect::new(
+            request.slot_left,
+            part.screen_y,
+            request.slot_cols,
+            part.rows,
+        )
+        .intersection(request.pane);
+        let mut symbol = [0u8; 4];
+        let symbol = self.symbol.encode_utf8(&mut symbol);
+        for piece in exclude_overlays(area, request.overlays) {
+            for y in piece.top()..piece.bottom() {
+                for x in piece.left()..piece.right() {
+                    if let Some(cell) = buf.cell_mut((x, y)) {
+                        cell.set_symbol(symbol);
+                    }
+                }
+            }
+        }
     }
 }
 
