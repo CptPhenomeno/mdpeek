@@ -3,7 +3,17 @@
 //! Spike (KB-7): the geometry is pure and testable; the renderers draw into a
 //! ratatui `Buffer` so that every protocol is checked the same way.
 
-use ratatui::{buffer::Buffer, layout::Rect};
+use image::{DynamicImage, Rgba, RgbaImage};
+use ratatui::{
+    buffer::Buffer,
+    layout::{Rect, Size},
+    widgets::Widget,
+};
+use ratatui_image::{
+    errors::Errors,
+    picker::Picker,
+    sliced::{SignedPosition, SlicedImage, SlicedProtocol},
+};
 
 /// The part of an image slot that intersects the document pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -164,6 +174,59 @@ impl PictureRenderer for PlaceholderRenderer {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Composites `img` over an opaque background so that no pixel stays
+/// transparent (SPEC §4.2: the terminal's own background must never show
+/// through a picture).
+pub fn flatten_over(img: &DynamicImage, bg: Rgba<u8>) -> DynamicImage {
+    let mut out =
+        RgbaImage::from_pixel(img.width(), img.height(), Rgba([bg[0], bg[1], bg[2], 255]));
+    image::imageops::overlay(&mut out, &img.to_rgba8(), 0, 0);
+    // Blending can leave alpha at 254 through rounding; the picture is opaque.
+    out.pixels_mut().for_each(|p| p[3] = 255);
+    DynamicImage::ImageRgba8(out)
+}
+
+/// Terminal-graphics renderer on top of `ratatui-image`'s sliced protocols
+/// (Kitty unicode placeholders, per-row iTerm2 images, Sixel band slicing,
+/// halfblocks). The image is encoded once at natural size; scrolling only
+/// changes which rows are emitted.
+pub struct SlicedRenderer {
+    protocol: SlicedProtocol,
+}
+
+impl SlicedRenderer {
+    pub fn new(picker: &Picker, img: DynamicImage, bg: Rgba<u8>) -> Result<Self, Errors> {
+        let flat = flatten_over(&img, bg);
+        Ok(Self {
+            protocol: SlicedProtocol::new(picker, flat, None)?,
+        })
+    }
+
+    /// Slot size in cells.
+    pub fn size(&self) -> Size {
+        self.protocol.size()
+    }
+}
+
+impl PictureRenderer for SlicedRenderer {
+    fn render(&mut self, request: &PictureRequest<'_>, buf: &mut Buffer) {
+        let Some(part) = visible_part(request.slot_top, request.slot_rows, request.pane) else {
+            return;
+        };
+        for band in clear_row_bands(request, &part) {
+            let area = Rect::new(request.pane.x, band.screen_y, request.pane.width, band.rows)
+                .intersection(request.pane);
+            let (Ok(dx), Ok(dy)) = (
+                i16::try_from(i32::from(request.slot_left) - i32::from(request.pane.x)),
+                i16::try_from(band.skip_rows),
+            ) else {
+                continue;
+            };
+            SlicedImage::new(&self.protocol, SignedPosition { x: dx, y: -dy }).render(area, buf);
         }
     }
 }
