@@ -223,7 +223,6 @@ impl Builder {
             TagEnd::Strong => return self.style.strong = false,
             TagEnd::Strikethrough => return self.style.strikethrough = false,
             TagEnd::Link => return drop(self.link.pop()),
-            TagEnd::Image => return,
             _ => {}
         }
         let Some(frame) = self.stack.pop() else {
@@ -265,7 +264,11 @@ impl Builder {
         match self.stack.last_mut() {
             Some(Frame::Paragraph(c) | Frame::Heading(_, c)) => c.push(inline),
             Some(Frame::Item(_, blocks) | Frame::Quote(blocks)) => {
-                blocks.push(Block::Paragraph(vec![inline]));
+                if let Some(Block::Paragraph(c)) = blocks.last_mut() {
+                    c.push(inline);
+                } else {
+                    blocks.push(Block::Paragraph(vec![inline]));
+                }
             }
             _ => {}
         }
@@ -514,5 +517,32 @@ mod tests {
                 vec![Block::Diagram("graph TD\n  A-->B\n".into())]
             );
         }
+    }
+
+    #[test]
+    fn content_after_image_is_kept() {
+        let doc = md("text ![alt](x.png) more\n\n# Heading\n");
+        assert_eq!(doc.blocks.len(), 2);
+        let Block::Paragraph(p) = &doc.blocks[0] else {
+            panic!()
+        };
+        assert_eq!(p.first(), Some(&plain("text ")));
+        assert_eq!(p.last(), Some(&plain(" more")));
+        assert!(matches!(doc.blocks[1], Block::Heading { level: 1, .. }));
+    }
+
+    #[test]
+    fn tight_item_inlines_form_one_paragraph() {
+        let doc = md("- a **b** c\n  - nested\n");
+        let Block::List(l) = &doc.blocks[0] else {
+            panic!()
+        };
+        let blocks = &l.items[0].blocks;
+        assert_eq!(blocks.len(), 2);
+        let Block::Paragraph(p) = &blocks[0] else {
+            panic!()
+        };
+        assert_eq!(p.len(), 3);
+        assert!(matches!(blocks[1], Block::List(_)));
     }
 }
