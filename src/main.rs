@@ -1,7 +1,9 @@
+use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser;
 use readmd::cli::{Args, StartTarget};
+use readmd::doc::Document;
 use readmd::ui;
 
 fn main() -> ExitCode {
@@ -12,25 +14,36 @@ fn main() -> ExitCode {
             return err.exit_code();
         }
     };
-    // Placeholder until the start-up root and initial file logic lands (KB-25).
-    let lines = match &config.target {
-        StartTarget::File(path) => match std::fs::read(path) {
-            Ok(bytes) => String::from_utf8_lossy(&bytes)
-                .lines()
-                .map(str::to_owned)
-                .collect(),
+    // Placeholder until the start-up root and initial file logic lands (KB-25):
+    // a file's parent is the root; a directory has no file to open yet.
+    let (doc, rel_path) = match &config.target {
+        StartTarget::File(path) => match Document::from_path(path) {
+            Ok(doc) => (doc, relative_to_root(path)),
             Err(err) => {
                 eprintln!("readmd: {}: {err}", path.display());
                 return ExitCode::FAILURE;
             }
         },
-        StartTarget::Directory(_) => Vec::new(),
+        StartTarget::Directory(_) => (
+            Document {
+                empty: true,
+                ..Document::default()
+            },
+            String::new(),
+        ),
     };
-    match ui::run(lines) {
+    match ui::run(doc, rel_path) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("readmd: {err}");
             ExitCode::FAILURE
         }
     }
+}
+
+/// Path of `file` relative to its parent directory, the temporary root (KB-25).
+fn relative_to_root(file: &Path) -> String {
+    file.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
