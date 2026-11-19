@@ -12,6 +12,17 @@ Evidence: `tests/clip_protocols.rs` (buffer and escape-sequence checks per
 protocol), `src/graphics.rs` (geometry, renderer trait, placeholder),
 `examples/clip_spike.rs` (interactive scene and `--bench`).
 
+## Protocol choice per terminal (manual runs)
+
+- WezTerm 20240203: **iTerm2**. Run by hand, it scrolls, clips at the pane top
+  and bottom, leaves no fragments and shows the dark app background through
+  transparent pixels. WezTerm does not implement Kitty unicode placeholders (it
+  prints U+10EEEE glyphs), and ratatui-image's own detection excludes Kitty on
+  WezTerm and prefers iTerm2, so default detection already does the right thing.
+- Kitty protocol (placeholders) only on terminals that support them, such as
+  kitty itself; forcing `--protocol kitty` on WezTerm is not valid.
+- Without `--protocol` the example uses the picker's detection.
+
 ## Chosen strategy
 
 1. Encode the picture once at natural size (`SlicedProtocol::new`), after

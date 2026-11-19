@@ -154,12 +154,23 @@ fn main() -> io::Result<()> {
                     .style(Style::default().bg(Color::Blue).fg(Color::White)),
                     status,
                 );
-                let popup = Rect::new(doc.x + 8, doc.y + 4, 30.min(doc.width), 6.min(doc.height));
+                // Centred on the picture's left edge, vertically mid-pane, so it covers
+                // picture columns at any terminal width.
+                let slot_left = doc.x + doc.width.saturating_sub(slot.width) / 2;
+                let pw = 30.min(doc.width);
+                let px = slot_left.saturating_sub(pw / 2).max(doc.x);
+                let px = px.min(doc.right().saturating_sub(pw));
+                let popup = Rect::new(
+                    px,
+                    doc.y + doc.height.saturating_sub(6) / 2,
+                    pw,
+                    6.min(doc.height),
+                );
                 let overlays: Vec<Rect> = if overlay { vec![popup] } else { vec![] };
                 let req = PictureRequest {
                     pane: doc,
                     slot_top: i32::from(doc.y) + 2 - scroll,
-                    slot_left: doc.x + doc.width.saturating_sub(slot.width) / 2,
+                    slot_left,
                     slot_cols: slot.width,
                     slot_rows: slot.height,
                     overlays: &overlays,
