@@ -3022,6 +3022,7 @@ dependencies = [
  "resvg",
  "syntect",
  "tempfile",
+ "unicode-width",
 ]
 
 [[package]]
