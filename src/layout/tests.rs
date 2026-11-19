@@ -2,6 +2,7 @@ use ratatui::style::{Color, Modifier};
 
 use super::*;
 use crate::doc::{Document, Source};
+use unicode_width::UnicodeWidthStr;
 
 const CELL: (u16, u16) = (10, 20);
 
@@ -221,4 +222,23 @@ fn table_cell_inline_styles_survive_wrapping() {
     );
     let l = lay("| h |\n|---|\n| aa `code` bb cc dd ee |", 20);
     assert!(span(&l, "code").style.bg.is_some());
+}
+
+#[test]
+fn table_with_more_columns_than_fit_never_exceeds_the_content_width() {
+    let md = "| a | b | c | d | e | f | g | h |\n|---|---|---|---|---|---|---|---|\n| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |";
+    let l = lay(md, 20);
+    for row in &l.rows {
+        assert!(row.text().width() <= 18, "{:?}", row.text());
+    }
+    assert!(l.rows[1].text().ends_with('…'));
+}
+
+#[test]
+fn wide_characters_in_a_tightly_shrunk_table_keep_rows_aligned_within_the_content_width() {
+    let md = "| 漢漢漢漢漢漢漢漢 | 漢字 漢字 漢字 | 漢 |\n|---|---|---|\n| 漢 | b | c |";
+    let l = lay(md, 20);
+    let widths: Vec<usize> = l.rows.iter().map(|r| r.text().width()).collect();
+    assert!(widths.iter().all(|w| *w == widths[0]), "{widths:?}");
+    assert!(widths[0] <= 18, "{widths:?}");
 }
