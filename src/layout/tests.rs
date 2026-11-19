@@ -172,7 +172,7 @@ fn table_cells_follow_left_center_and_right_alignment_from_the_delimiter_row() {
         60,
     );
     assert_eq!(t[1], "│ l    │  c   │    r │");
-    assert_eq!(t[5], "│ x    │  y   │    z │");
+    assert_eq!(t[4], "│ x    │  y   │    z │");
 }
 
 #[test]
@@ -198,16 +198,16 @@ fn table_wider_than_the_pane_shrinks_its_columns_proportionally_to_fit() {
 
 #[test]
 fn shrunk_table_cell_text_wraps_inside_its_column_and_the_row_grows() {
-    let t = table_text("| aaa bbb ccc | d |\n|---|---|\n| x | y |", 14);
-    // content 12: borders 7, columns 5 -> widths 4 and 1
-    assert_eq!(t[0], "┌──────┬───┐");
-    assert_eq!(&t[1..4], ["│ aaa  │ d │", "│ bbb  │   │", "│ ccc  │   │"]);
-    assert_eq!(t[5], "│ x    │ y │");
+    let t = table_text("| aaaa bbbb cccc | d |\n|---|---|\n| x | y |", 20);
+    // content 18: borders 7, columns 11 -> widths 10 and 1
+    assert_eq!(t[0], "┌────────────┬───┐");
+    assert_eq!(&t[1..3], ["│ aaaa bbbb  │ d │", "│ cccc       │   │"]);
+    assert_eq!(t[4], "│ x          │ y │");
 }
 
 #[test]
 fn table_cell_inline_styles_survive_wrapping() {
-    let l = lay("| **bold words here** | h |\n|---|---|\n| x | y |", 16);
+    let l = lay("| **bold words here** | h |\n|---|---|\n| x | y |", 20);
     let bold: Vec<&RowSpan> = l
         .rows
         .iter()
@@ -219,6 +219,6 @@ fn table_cell_inline_styles_survive_wrapping() {
         bold.iter()
             .all(|s| s.style.add_modifier.contains(Modifier::BOLD))
     );
-    let l = lay("| h |\n|---|\n| aa `code` bb cc dd ee |", 16);
+    let l = lay("| h |\n|---|\n| aa `code` bb cc dd ee |", 20);
     assert!(span(&l, "code").style.bg.is_some());
 }

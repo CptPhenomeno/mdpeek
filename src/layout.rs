@@ -36,6 +36,8 @@ pub enum RowKind {
     Heading(u8),
     /// A horizontal rule filling the content width.
     Rule,
+    /// A line of a table: border or cells.
+    Table,
     /// Spacing between blocks.
     Blank,
 }
