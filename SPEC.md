@@ -102,7 +102,7 @@ A `.mmd`/`.mermaid` file is a document made of a single diagram.
 
 ### 3.5 Images and graphics
 
-1. **Protocol detection** at start-up (unless `--protocol` is given): query the terminal for Kitty, then Sixel, then iTerm2 support, through `ratatui-image`; if none responds, use halfblocks. The cell size in pixels is read from the terminal; if unavailable, assume 10×20 px.
+1. **Protocol detection** at start-up (unless `--protocol` is given): use `ratatui-image`'s detection (`Picker::from_query_stdio()`), which knows each terminal's real support — on WezTerm it picks iTerm2, because WezTerm has no Kitty unicode placeholders; Kitty is used only where the terminal supports it (e.g. kitty itself); if nothing is detected, use halfblocks. Pictures are encoded once at their slot size and drawn as vertical slices while scrolling (see `docs/spikes/image-clipping.md`). The cell size in pixels is read from the terminal; if unavailable, assume 10×20 px.
 2. **Local images** `![alt](path)`: `path` is resolved relative to the document's directory. Supported formats: PNG, JPEG, GIF (first frame only), SVG (rasterised with `resvg`), WebP. The picture is scaled down to fit the pane width (never scaled up beyond its natural size) and capped at the pane height, keeping the aspect ratio.
 3. **Missing or unreadable image**: one dimmed row `[image not found: <path>]`, followed by the alt text if any.
 4. **Remote image** (`http://`, `https://`): one dimmed row `[remote image: <url>]` plus alt text. No network request.
@@ -227,7 +227,7 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
 - Acceptance criteria of the whole work:
   - `SAMPLE.md` at the repository root (with `sample-assets/`) is the benchmark document: it shows every element `readmd` must render, and `readmd SAMPLE.md` renders each of its sections as the document describes.
   - A `fixtures/` folder contains a showcase document, built from `SAMPLE.md`, with every element of §3.3, at least five Mermaid diagram types (flowchart, sequence, class, gantt, mindmap), one diagram with a syntax error, local PNG/SVG images, a missing image and a remote image.
-  - `readmd fixtures/` in WezTerm (Kitty or iTerm2 protocol) shows diagrams and images as sharp pictures, and scrolling never leaves picture fragments on screen.
+  - `readmd fixtures/` in WezTerm (iTerm2 protocol, as detected) shows diagrams and images as sharp pictures, and scrolling never leaves picture fragments on screen.
   - The same command with `--protocol halfblocks` shows all pictures with halfblocks; F8 shows diagrams as text.
   - Every key in §3.6–§3.10 works as specified and is listed in the F1 help.
   - Opening the showcase document takes under 300 ms to first paint (diagrams may still be rendering) on a modern laptop.
