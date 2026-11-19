@@ -1,5 +1,7 @@
 //! GitHub-style heading slugs and link classification (SPEC §3.6.2, §4.9).
 
+use std::collections::HashMap;
+
 use super::{Block, Document, Inline};
 
 /// What Enter does with a link target.
@@ -14,19 +16,64 @@ pub enum LinkKind {
 }
 
 /// Slug of one heading text, without duplicate suffix.
-pub fn slugify(_text: &str) -> String {
-    todo!()
+pub fn slugify(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .filter_map(|c| match c {
+            ' ' => Some('-'),
+            '-' | '_' => Some(c),
+            c if c.is_alphanumeric() => Some(c),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Classifies a link target.
-pub fn classify_link(_target: &str) -> LinkKind {
-    todo!()
+pub fn classify_link(target: &str) -> LinkKind {
+    if target.starts_with('#') {
+        return LinkKind::Anchor;
+    }
+    let scheme = target.split_once(':').map(|(s, _)| s.to_ascii_lowercase());
+    match scheme.as_deref() {
+        Some("http" | "https" | "mailto") => LinkKind::External,
+        _ => LinkKind::Unsupported,
+    }
+}
+
+fn plain_text(content: &[Inline]) -> String {
+    content
+        .iter()
+        .map(|i| match i {
+            Inline::Span(s) => s.text.as_str(),
+            Inline::SoftBreak | Inline::HardBreak => " ",
+            _ => "",
+        })
+        .collect()
+}
+
+fn collect(blocks: &[Block], f: &mut impl FnMut(&[Inline])) {
+    for b in blocks {
+        match b {
+            Block::Heading { content, .. } => f(content),
+            Block::BlockQuote(inner) => collect(inner, f),
+            Block::List(l) => l.items.iter().for_each(|it| collect(&it.blocks, f)),
+            _ => {}
+        }
+    }
 }
 
 impl Document {
     /// Unique slugs of all headings in document order (duplicates get `-1`, `-2`, ...).
     pub fn heading_slugs(&self) -> Vec<String> {
-        todo!()
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        let mut out = Vec::new();
+        collect(&self.blocks, &mut |content| {
+            let base = slugify(&plain_text(content));
+            let n = seen.entry(base.clone()).or_insert(0);
+            out.push(if *n == 0 { base } else { format!("{base}-{n}") });
+            *n += 1;
+        });
+        out
     }
 }
 
