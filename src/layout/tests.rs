@@ -65,6 +65,7 @@ fn h1_and_h2_are_followed_by_a_rule_and_h3_is_not() {
             RowKind::Heading(1),
             RowKind::Rule,
             RowKind::Blank,
+            RowKind::Blank,
             RowKind::Heading(2),
             RowKind::Rule,
             RowKind::Blank,
@@ -312,5 +313,108 @@ fn tables_nested_in_lists_and_quotes_never_exceed_the_content_width() {
                 .iter()
                 .all(|r| r.text().width() <= usize::from(w) - 2)
         );
+    }
+}
+
+fn blanks_above(l: &Layout, text: &str) -> usize {
+    let at = l
+        .rows
+        .iter()
+        .position(|r| r.text().contains(text))
+        .unwrap_or_else(|| panic!("no row with {text:?}"));
+    l.rows[..at]
+        .iter()
+        .rev()
+        .take_while(|r| r.kind == RowKind::Blank)
+        .count()
+}
+
+#[test]
+fn h1_and_h2_have_two_blank_rows_above_them_and_h3_to_h6_one() {
+    let md = "p0\n\n# a1\n\np1\n\n## b2\n\np2\n\n### c3\n\np3\n\n#### d4\n\np4\n\n##### e5\n\np5\n\n###### f6";
+    let l = lay(md, 30);
+    for (name, n) in [
+        ("a1", 2),
+        ("b2", 2),
+        ("c3", 1),
+        ("d4", 1),
+        ("e5", 1),
+        ("f6", 1),
+    ] {
+        assert_eq!(blanks_above(&l, name), n, "{name}");
+    }
+    // the document never opens with blank rows
+    let l = lay("# top\n\ntext", 30);
+    assert_eq!(l.rows[0].kind, RowKind::Heading(1));
+}
+
+#[test]
+fn h1_is_followed_by_a_heavy_rule_and_h2_by_a_thin_rule() {
+    let l = lay("# A\n\n## B\n\n### C", 30);
+    let rule_after = |h: &str| {
+        let at = l.rows.iter().position(|r| r.text() == h).expect(h);
+        let r = &l.rows[at + 1];
+        assert_eq!(r.kind, RowKind::Rule);
+        r.text()
+    };
+    assert_eq!(rule_after("A"), "═".repeat(28));
+    assert_eq!(rule_after("B"), "─".repeat(28));
+    let at = l.rows.iter().position(|r| r.text() == "C").expect("C");
+    assert_eq!(l.rows.len(), at + 1);
+}
+
+#[test]
+fn strong_spans_use_a_brighter_foreground_than_body_text_as_well_as_bold() {
+    let l = lay("plain **strong**", 40);
+    let body = span(&l, "plain").style.fg.expect("body fg");
+    let strong = span(&l, "strong").style;
+    assert!(strong.add_modifier.contains(Modifier::BOLD));
+    assert_eq!(strong.fg, Some(crate::theme::STRONG));
+    assert_ne!(strong.fg, Some(body));
+    assert_eq!(strong.bg, None);
+}
+
+#[test]
+fn emphasis_spans_use_a_distinct_foreground_as_well_as_italic() {
+    let l = lay("plain *emph* **strong**", 40);
+    let body = span(&l, "plain").style.fg;
+    let emph = span(&l, "emph").style;
+    assert!(emph.add_modifier.contains(Modifier::ITALIC));
+    assert_eq!(emph.fg, Some(crate::theme::EMPHASIS));
+    assert_ne!(emph.fg, body);
+    assert_ne!(emph.fg, span(&l, "strong").style.fg);
+}
+
+#[test]
+fn styles_still_combine_on_nested_emphasis_inside_headings() {
+    let l = lay("## head *it* **bo** ***both***", 50);
+    let head = span(&l, "head").style;
+    let it = span(&l, "it").style;
+    let bo = span(&l, "bo").style;
+    let both = span(&l, "both").style;
+    assert!(it.add_modifier.contains(Modifier::ITALIC | Modifier::BOLD));
+    assert!(bo.add_modifier.contains(Modifier::BOLD));
+    assert!(
+        both.add_modifier
+            .contains(Modifier::ITALIC | Modifier::BOLD)
+    );
+    // inside a heading the level colour wins over the tints
+    for s in [it, bo, both] {
+        assert_eq!(s.fg, head.fg);
+    }
+}
+
+#[test]
+fn no_row_exceeds_the_content_width() {
+    let md = "# A very long heading that must wrap onto several rows of text\n\n## Another long heading with **strong** and *emphasis* words\n\n- ### nested heading in a list item that is long\n\n> ## quoted heading that is also rather long\n\n[^1]\n\n[^1]: ### note heading text that is long enough to wrap";
+    for width in [20u16, 24, 40] {
+        let l = lay(md, width);
+        for r in &l.rows {
+            assert!(
+                r.text().width() <= usize::from(width - 2 * MARGIN),
+                "{width}: {:?}",
+                r.text()
+            );
+        }
     }
 }

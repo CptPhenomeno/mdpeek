@@ -97,11 +97,7 @@ pub fn layout(doc: &Document, width: u16, _cell: (u16, u16)) -> Layout {
             continue;
         }
         if !out.rows.is_empty() {
-            out.rows.push(Row {
-                kind: RowKind::Blank,
-                block: index,
-                spans: Vec::new(),
-            });
+            out.rows.extend((0..gap(block)).map(|_| blank(index)));
         }
         out.rows.extend(rows);
     }
@@ -152,11 +148,21 @@ fn blocks_rows(blocks: &[Block], index: usize, width: usize) -> Vec<Row> {
             continue;
         }
         if !out.is_empty() {
-            out.push(blank(index));
+            out.extend((0..gap(block)).map(|_| blank(index)));
         }
         out.extend(rows);
     }
     out
+}
+
+/// Blank rows above a block: headings open a section, H1 and H2 with more air.
+/// Nothing is added above the first block of a container, and list items keep
+/// one row between their blocks.
+fn gap(block: &Block) -> usize {
+    match block {
+        Block::Heading { level, .. } if *level <= 2 => 2,
+        _ => 1,
+    }
 }
 
 fn plain(text: &str, style: Style) -> RowSpan {
@@ -288,11 +294,11 @@ fn block_rows(block: &Block, index: usize, content: usize) -> Vec<Row> {
             })
             .collect()
     };
-    let rule = || Row {
+    let rule = |glyph: &str| Row {
         kind: RowKind::Rule,
         block: index,
         spans: vec![RowSpan {
-            text: "─".repeat(content),
+            text: glyph.repeat(content),
             style: theme::rule(),
             link: None,
         }],
@@ -307,11 +313,11 @@ fn block_rows(block: &Block, index: usize, content: usize) -> Vec<Row> {
                 wrap(pieces(c, theme::heading(*level)), content),
             );
             if *level <= 2 && !rows.is_empty() {
-                rows.push(rule());
+                rows.push(rule(if *level == 1 { "═" } else { "─" }));
             }
             rows
         }
-        Block::Rule => vec![rule()],
+        Block::Rule => vec![rule("─")],
         Block::Html(text) => {
             let like = RowSpan {
                 text: String::new(),
