@@ -635,7 +635,6 @@ dependencies = [
  "cssparser-macros",
  "dtoa-short",
  "itoa",
- "phf 0.14.0",
  "smallvec",
 ]
 
@@ -1777,7 +1776,6 @@ dependencies = [
  "dugong",
  "merman-model",
  "rustc-hash",
- "ryu-js",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -1803,7 +1801,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
- "unicode-general-category",
 ]
 
 [[package]]
@@ -1816,25 +1813,6 @@ dependencies = [
  "merman-core",
  "merman-model",
  "serde",
-]
-
-[[package]]
-name = "merman-elk-layered"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f261eaea69f2c0054ea56d4c5fc4be63677f2c8b99edece33ad61344e168110f"
-dependencies = [
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "merman-layout-elk"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "642faf8a3bbd9102b8b540c275e25590c43111854006f630dd0998df7847c325"
-dependencies = [
- "merman-elk-layered",
- "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1884,7 +1862,6 @@ dependencies = [
  "libm",
  "manatee",
  "memchr",
- "merman-layout-elk",
  "merman-markup",
  "merman-model",
  "merman-theme-contract",
@@ -2333,7 +2310,7 @@ version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd6780a80ae0c52cc120a26a1a42c1ae51b247a253e4e06113d23d2c2edd078"
 dependencies = [
- "phf_macros 0.11.3",
+ "phf_macros",
  "phf_shared 0.11.3",
 ]
 
@@ -2352,7 +2329,6 @@ version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "010378780309880b08997fae13be7834dba947d36393bd372f2b1556deb2a2f6"
 dependencies = [
- "phf_macros 0.14.0",
  "phf_shared 0.14.0",
  "serde",
 ]
@@ -2425,19 +2401,6 @@ checksum = "f84ac04429c13a7ff43785d75ad27569f2951ce0ffd30a3321230db2fc727216"
 dependencies = [
  "phf_generator 0.11.3",
  "phf_shared 0.11.3",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "phf_macros"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fa8d0ca26d424d27630da600c6624696e7dec8bf7b3b492b383c5dc49e5e085"
-dependencies = [
- "phf_generator 0.14.0",
- "phf_shared 0.14.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -3020,6 +2983,7 @@ dependencies = [
  "ratatui",
  "ratatui-image",
  "resvg",
+ "serde_json",
  "syntect",
  "tempfile",
  "unicode-width",
@@ -3845,12 +3809,6 @@ name = "unicode-bidi"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c1cb5db39152898a79168971543b1cb5020dff7fe43c8dc468b0885f5e29df5"
-
-[[package]]
-name = "unicode-general-category"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b993bddc193ae5bd0d623b49ec06ac3e9312875fdae725a975c51db1cc1677f"
 
 [[package]]
 name = "unicode-ident"
