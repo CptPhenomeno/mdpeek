@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
 /// A parsed file: a block tree plus the flags the viewer needs (SPEC §4.3, §4.4).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -192,6 +192,13 @@ enum Frame {
     Quote(Vec<Block>),
     Code(Option<String>, String),
     Html(String),
+    Table(Vec<Align>, Vec<Cell>, Vec<Vec<Cell>>),
+    Head(Vec<Cell>),
+    Row(Vec<Cell>),
+    Cell(Vec<Inline>),
+    Footnote(String, Vec<Block>),
+    /// Image target and the alt text collected so far.
+    Image(String, String),
     /// Container whose events are not modelled yet; its content is dropped.
     Skipped,
 }
@@ -200,20 +207,29 @@ struct Builder {
     stack: Vec<Frame>,
     style: Style,
     link: Vec<String>,
+    base_dir: Option<PathBuf>,
+    /// Footnote label to number, assigned by first use.
+    numbers: HashMap<String, usize>,
+    footnotes: Vec<Footnote>,
 }
 
-fn parse_markdown(text: &str, _base_dir: Option<&Path>) -> (Vec<Block>, Vec<Footnote>) {
+fn parse_markdown(text: &str, base_dir: Option<&Path>) -> (Vec<Block>, Vec<Footnote>) {
     let mut b = Builder {
         stack: vec![Frame::Root(Vec::new())],
         style: Style::default(),
         link: Vec::new(),
+        base_dir: base_dir.map(Path::to_path_buf),
+        numbers: HashMap::new(),
+        footnotes: Vec::new(),
     };
     for event in Parser::new_ext(text, options()) {
         b.event(event);
     }
+    let mut footnotes = std::mem::take(&mut b.footnotes);
+    footnotes.sort_by_key(|f| f.number);
     match b.stack.pop() {
-        Some(Frame::Root(blocks)) => (blocks, Vec::new()),
-        _ => (Vec::new(), Vec::new()),
+        Some(Frame::Root(blocks)) => (blocks, footnotes),
+        _ => (Vec::new(), footnotes),
     }
 }
 
@@ -241,6 +257,10 @@ impl Builder {
             Event::SoftBreak => self.push_inline(Inline::SoftBreak),
             Event::HardBreak => self.push_inline(Inline::HardBreak),
             Event::Rule => self.push_block(Block::Rule),
+            Event::FootnoteReference(label) => {
+                let n = self.footnote_number(&label);
+                self.push_inline(Inline::FootnoteRef(n));
+            }
             Event::TaskListMarker(checked) => {
                 if let Some(Frame::Item(task, _)) = self.stack.last_mut() {
                     *task = Some(checked);
@@ -269,7 +289,25 @@ impl Builder {
             Tag::Strong => return self.style.strong = true,
             Tag::Strikethrough => return self.style.strikethrough = true,
             Tag::Link { dest_url, .. } => return self.link.push(dest_url.into_string()),
-            // Tables, footnotes, images, ...: not modelled yet.
+            Tag::Table(aligns) => Frame::Table(
+                aligns
+                    .into_iter()
+                    .map(|a| match a {
+                        Alignment::None => Align::Default,
+                        Alignment::Left => Align::Left,
+                        Alignment::Center => Align::Center,
+                        Alignment::Right => Align::Right,
+                    })
+                    .collect(),
+                Vec::new(),
+                Vec::new(),
+            ),
+            Tag::TableHead => Frame::Head(Vec::new()),
+            Tag::TableRow => Frame::Row(Vec::new()),
+            Tag::TableCell => Frame::Cell(Vec::new()),
+            Tag::FootnoteDefinition(label) => Frame::Footnote(label.into_string(), Vec::new()),
+            Tag::Image { dest_url, .. } => Frame::Image(dest_url.into_string(), String::new()),
+            // Anything else (definition lists, metadata, ...): not modelled yet.
             _ => Frame::Skipped,
         };
         self.stack.push(frame);
@@ -290,7 +328,46 @@ impl Builder {
             Frame::Paragraph(c) => self.push_block(Block::Paragraph(c)),
             Frame::Heading(level, content) => self.push_block(Block::Heading { level, content }),
             Frame::Quote(blocks) => self.push_block(Block::BlockQuote(blocks)),
-            Frame::Code(lang, text) => self.push_block(Block::CodeBlock { lang, text }),
+            Frame::Code(lang, text) => {
+                if lang
+                    .as_deref()
+                    .is_some_and(|l| l.eq_ignore_ascii_case("mermaid"))
+                {
+                    self.push_block(Block::Diagram(text));
+                } else {
+                    self.push_block(Block::CodeBlock { lang, text });
+                }
+            }
+            Frame::Table(align, header, rows) => {
+                self.push_block(Block::Table(Table {
+                    align,
+                    header,
+                    rows,
+                }));
+            }
+            Frame::Head(cells) => {
+                if let Some(Frame::Table(_, header, _)) = self.stack.last_mut() {
+                    *header = cells;
+                }
+            }
+            Frame::Row(cells) => {
+                if let Some(Frame::Table(_, _, rows)) = self.stack.last_mut() {
+                    rows.push(cells);
+                }
+            }
+            Frame::Cell(content) => {
+                if let Some(Frame::Head(cells) | Frame::Row(cells)) = self.stack.last_mut() {
+                    cells.push(content);
+                }
+            }
+            Frame::Footnote(label, blocks) => {
+                let number = self.footnote_number(&label);
+                self.footnotes.push(Footnote { number, blocks });
+            }
+            Frame::Image(dest, alt) => {
+                let target = self.image_target(&dest);
+                self.push_inline(Inline::Image(Image { alt, target }));
+            }
             Frame::Html(t) => self.push_block(Block::Html(t)),
             Frame::List(start, items) => self.push_block(Block::List(List { start, items })),
             Frame::Item(task, blocks) => {
@@ -302,7 +379,28 @@ impl Builder {
         }
     }
 
+    fn footnote_number(&mut self, label: &str) -> usize {
+        let next = self.numbers.len() + 1;
+        *self.numbers.entry(label.to_owned()).or_insert(next)
+    }
+
+    fn image_target(&self, dest: &str) -> ImageTarget {
+        let lower = dest.to_ascii_lowercase();
+        if lower.starts_with("http://") || lower.starts_with("https://") {
+            return ImageTarget::Remote(dest.to_owned());
+        }
+        let path = PathBuf::from(dest);
+        match &self.base_dir {
+            Some(base) => ImageTarget::Local(base.join(path)),
+            None => ImageTarget::Local(path),
+        }
+    }
+
     fn push_span(&mut self, text: &str, extra: Style) {
+        if let Some(Frame::Image(_, alt)) = self.stack.last_mut() {
+            alt.push_str(text);
+            return;
+        }
         let style = Style {
             emphasis: self.style.emphasis | extra.emphasis,
             strong: self.style.strong | extra.strong,
@@ -320,8 +418,8 @@ impl Builder {
     /// Append to the open text block; tight list items have none, so open a paragraph.
     fn push_inline(&mut self, inline: Inline) {
         match self.stack.last_mut() {
-            Some(Frame::Paragraph(c) | Frame::Heading(_, c)) => c.push(inline),
-            Some(Frame::Item(_, blocks) | Frame::Quote(blocks)) => {
+            Some(Frame::Paragraph(c) | Frame::Heading(_, c) | Frame::Cell(c)) => c.push(inline),
+            Some(Frame::Item(_, blocks) | Frame::Quote(blocks) | Frame::Footnote(_, blocks)) => {
                 if let Some(Block::Paragraph(c)) = blocks.last_mut() {
                     c.push(inline);
                 } else {
@@ -333,7 +431,9 @@ impl Builder {
     }
 
     fn push_block(&mut self, block: Block) {
-        if let Some(Frame::Root(b) | Frame::Item(_, b) | Frame::Quote(b)) = self.stack.last_mut() {
+        if let Some(Frame::Root(b) | Frame::Item(_, b) | Frame::Quote(b) | Frame::Footnote(_, b)) =
+            self.stack.last_mut()
+        {
             b.push(block);
         }
     }
