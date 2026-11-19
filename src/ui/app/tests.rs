@@ -3,6 +3,8 @@ use ratatui::{Terminal, backend::TestBackend};
 
 use super::App;
 use crate::doc::{Document, Source};
+use crate::theme;
+use ratatui::buffer::Buffer;
 
 /// Terminal rows taken by the borders (2) and the status bar (1).
 const CHROME: u16 = 3;
@@ -203,4 +205,77 @@ fn snapshot_of_a_short_document_with_headings_paragraphs_and_inline_styles() {
     let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
     terminal.draw(|f| app.render(f)).unwrap();
     insta::assert_snapshot!(terminal.backend());
+}
+
+fn buffer(app: &mut App, width: u16, height: u16) -> Buffer {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal.draw(|f| app.render(f)).unwrap();
+    terminal.backend().buffer().clone()
+}
+
+fn assert_all_bg(buf: &Buffer) {
+    for y in 0..buf.area.height {
+        for x in 0..buf.area.width {
+            assert_eq!(buf[(x, y)].bg, theme::BG, "cell ({x}, {y})");
+        }
+    }
+}
+
+const RICH: &str = "# Title\n\nbody `code` [link](http://x.y) *em* **b**\n\n> quote\n\n```rust\nlet a = 1;\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n---\n\n- item\n";
+
+#[test]
+fn no_cell_of_a_rendered_frame_has_the_default_background() {
+    let mut app = app_from(RICH, 50, 24);
+    let buf = buffer(&mut app, 50, 24);
+    for cell in buf.content() {
+        assert_ne!(cell.bg, ratatui::style::Color::Reset);
+    }
+    assert_all_bg(&buf);
+}
+
+#[test]
+fn empty_area_below_a_short_document_has_the_theme_background() {
+    let mut app = app_from("hi", 40, 20);
+    let buf = buffer(&mut app, 40, 20);
+    for y in 5..17 {
+        for x in 1..39 {
+            assert_eq!(buf[(x, y)].bg, theme::BG, "cell ({x}, {y})");
+        }
+    }
+}
+
+#[test]
+fn status_bar_and_pane_border_use_the_theme_background() {
+    let mut app = app_from("hi", 40, 10);
+    let buf = buffer(&mut app, 40, 10);
+    for x in 0..40 {
+        assert_eq!(buf[(x, 9)].bg, theme::BG, "status ({x})");
+        assert_eq!(buf[(x, 0)].bg, theme::BG, "top border ({x})");
+        assert_eq!(buf[(x, 8)].bg, theme::BG, "bottom border ({x})");
+    }
+    for y in 0..10 {
+        assert_eq!(buf[(0, y)].bg, theme::BG);
+        assert_eq!(buf[(39, y)].bg, theme::BG);
+    }
+}
+
+#[test]
+fn body_text_spans_get_the_theme_foreground() {
+    let mut app = app_from("hello", 40, 10);
+    let buf = buffer(&mut app, 40, 10);
+    // border (1) + margin, then the text.
+    let cell = (0..40)
+        .map(|x| &buf[(x, 1)])
+        .find(|c| c.symbol() == "h")
+        .unwrap();
+    assert_eq!(cell.fg, theme::FG);
+    assert_eq!(cell.bg, theme::BG);
+}
+
+#[test]
+fn too_narrow_and_empty_screens_have_the_theme_background() {
+    let mut narrow = app_from("text", 21, 10);
+    assert_all_bg(&buffer(&mut narrow, 21, 10));
+    let mut empty = app_from("", 40, 10);
+    assert_all_bg(&buffer(&mut empty, 40, 10));
 }

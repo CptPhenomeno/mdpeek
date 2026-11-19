@@ -7,5 +7,6 @@ pub mod graphics;
 pub mod highlight;
 pub mod layout;
 pub mod raster;
+pub mod theme;
 pub mod tree;
 pub mod ui;
