@@ -225,7 +225,8 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
   - No `unwrap()`/`expect()` outside tests and start-up code, unless the reason is commented.
   - Code, comments, docs and commit messages in English. No AI attribution lines (`Co-Authored-By`, "Generated with …") in commits.
 - Acceptance criteria of the whole work:
-  - A `fixtures/` folder contains a showcase document with every element of §3.3, at least five Mermaid diagram types (flowchart, sequence, class, gantt, mindmap), one diagram with a syntax error, local PNG/SVG images, a missing image and a remote image.
+  - `SAMPLE.md` at the repository root (with `sample-assets/`) is the benchmark document: it shows every element `readmd` must render, and `readmd SAMPLE.md` renders each of its sections as the document describes.
+  - A `fixtures/` folder contains a showcase document, built from `SAMPLE.md`, with every element of §3.3, at least five Mermaid diagram types (flowchart, sequence, class, gantt, mindmap), one diagram with a syntax error, local PNG/SVG images, a missing image and a remote image.
   - `readmd fixtures/` in WezTerm (Kitty or iTerm2 protocol) shows diagrams and images as sharp pictures, and scrolling never leaves picture fragments on screen.
   - The same command with `--protocol halfblocks` shows all pictures with halfblocks; F8 shows diagrams as text.
   - Every key in §3.6–§3.10 works as specified and is listed in the F1 help.
