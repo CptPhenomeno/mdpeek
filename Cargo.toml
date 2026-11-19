@@ -1,0 +1,31 @@
+[package]
+name = "readmd"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "Terminal Markdown reader with Mermaid diagrams"
+publish = false
+
+[dependencies]
+clap = { version = "4.6.8", features = ["derive"] }
+crossterm = "0.29.0"
+ignore = "0.4.34"
+image = "0.25.10"
+merman = "0.10.0"
+open = "5.4.5"
+pulldown-cmark = "0.13.6"
+ratatui = "0.30.2"
+ratatui-image = { version = "11.1.0", default-features = false, features = ["image-defaults", "crossterm"] }
+resvg = "0.50.0"
+syntect = "5.3.0"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+insta = "1.49.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
