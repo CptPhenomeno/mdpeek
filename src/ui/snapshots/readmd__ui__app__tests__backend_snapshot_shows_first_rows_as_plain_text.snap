@@ -1,7 +1,0 @@
----
-source: src/ui/app.rs
-expression: terminal.backend()
----
-"# Title     "
-"            "
-"some text   "
