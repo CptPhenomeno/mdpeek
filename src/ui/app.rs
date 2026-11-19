@@ -4,7 +4,6 @@ use crossterm::event::{KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
@@ -13,6 +12,7 @@ use unicode_width::UnicodeWidthStr;
 use super::keymap::{Action, action_for};
 use crate::doc::Document;
 use crate::layout::{self, Layout, MARGIN, State};
+use crate::theme;
 
 #[cfg(test)]
 mod tests;
@@ -149,12 +149,11 @@ impl App {
             height: area.height - pane.height,
             ..area
         };
-        let border = if self.focused {
-            Style::new().fg(Color::Cyan)
-        } else {
-            Style::new().fg(Color::DarkGray)
-        };
-        let block = Block::new().borders(Borders::ALL).border_style(border);
+        // Paint every cell first: later widgets only patch the foreground.
+        frame.render_widget(Block::new().style(theme::page()), area);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_style(theme::border(self.focused));
         let inner = block.inner(pane);
         frame.render_widget(block, pane);
         frame.render_widget(Paragraph::new(self.pane_lines(inner.height)), inner);
@@ -205,8 +204,7 @@ impl App {
     }
 
     fn pane_lines(&self, height: u16) -> Vec<Line<'static>> {
-        let notice =
-            |text: &'static str| vec![Line::styled(text, Style::new().fg(Color::DarkGray))];
+        let notice = |text: &'static str| vec![Line::styled(text, theme::dim())];
         match self.layout.state {
             State::TooNarrow => notice("Window too narrow"),
             State::Empty => notice("Empty document"),
@@ -239,6 +237,6 @@ impl App {
         let right = format!("{}% ", self.percent());
         let pad = usize::from(width).saturating_sub(left.width() + right.width());
         let text = format!("{left}{}{right}", " ".repeat(pad));
-        Line::styled(text, Style::new().add_modifier(Modifier::REVERSED))
+        Line::styled(text, theme::status())
     }
 }

@@ -4,8 +4,9 @@ use ratatui::style::{Modifier, Style};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::wrap::wrap;
-use super::{Row, RowKind, RowSpan, pieces, theme};
+use super::{Row, RowKind, RowSpan, pieces};
 use crate::doc::{Align, Cell, Table};
+use crate::theme;
 
 type Lines = Vec<Vec<RowSpan>>;
 
@@ -82,7 +83,7 @@ fn band(cells: &[Lines], widths: &[usize], align: &[Align], index: usize) -> Vec
     };
     let plain = |n: usize| RowSpan {
         text: " ".repeat(n),
-        style: Style::default(),
+        style: theme::body(),
         link: None,
     };
     (0..height)
@@ -121,12 +122,12 @@ pub fn rows(table: &Table, index: usize, content: usize) -> Vec<Row> {
     if all_cols == 0 {
         return Vec::new();
     }
-    let header_style = Style::default().add_modifier(Modifier::BOLD);
+    let header_style = theme::body().add_modifier(Modifier::BOLD);
     let huge = usize::MAX / 4;
     let mut natural = vec![1usize; all_cols];
     let mut min = vec![1usize; all_cols];
     let every = std::iter::once((&table.header, header_style))
-        .chain(table.rows.iter().map(|r| (r, Style::default())));
+        .chain(table.rows.iter().map(|r| (r, theme::body())));
     for (row, style) in every {
         for (c, cell) in row.iter().take(all_cols).enumerate() {
             let lines = cell_lines(cell, style, huge);
@@ -172,12 +173,7 @@ pub fn rows(table: &Table, index: usize, content: usize) -> Vec<Row> {
     ));
     out.push(border(&widths, '├', '┼', '┤', index));
     for row in &table.rows {
-        out.extend(band(
-            &lay(row, Style::default()),
-            &widths,
-            &table.align,
-            index,
-        ));
+        out.extend(band(&lay(row, theme::body()), &widths, &table.align, index));
     }
     out.push(border(&widths, '└', '┴', '┘', index));
     if marker {
