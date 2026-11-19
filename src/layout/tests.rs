@@ -242,3 +242,75 @@ fn wide_characters_in_a_tightly_shrunk_table_keep_rows_aligned_within_the_conten
     assert!(widths.iter().all(|w| *w == widths[0]), "{widths:?}");
     assert!(widths[0] <= 18, "{widths:?}");
 }
+
+#[test]
+fn unordered_items_get_bullets_and_ordered_items_get_their_numbers() {
+    let l = lay("- a\n- b\n\n3. c\n4. d", 30);
+    assert_eq!(texts(&l), ["• a", "• b", "", "3. c", "4. d"]);
+}
+
+#[test]
+fn nested_list_levels_are_indented_two_columns_per_level() {
+    let l = lay("- a\n  - b\n    - c\n- d", 30);
+    assert_eq!(texts(&l), ["• a", "  • b", "    • c", "• d"]);
+}
+
+#[test]
+fn wrapped_item_lines_align_with_the_item_text_not_the_marker() {
+    let l = lay("- aaaa bbbb cccc dddd eeee", 20);
+    assert_eq!(texts(&l), ["• aaaa bbbb cccc", "  dddd eeee"]);
+    let l = lay("10. aaaa bbbb cccc dddd", 20);
+    assert_eq!(texts(&l), ["10. aaaa bbbb cccc", "    dddd"]);
+}
+
+#[test]
+fn task_items_show_empty_and_checked_ballot_box_markers() {
+    let l = lay("- [ ] todo\n- [x] done", 30);
+    assert_eq!(texts(&l), ["☐ todo", "☑ done"]);
+}
+
+#[test]
+fn each_quote_nesting_level_adds_a_vertical_bar_and_the_text_is_dimmed() {
+    let l = lay("> a\n>\n> > b", 30);
+    assert_eq!(texts(&l), ["│ a", "│", "│ │ b"]);
+    let s = span(&l, "b");
+    assert!(s.style.add_modifier.contains(Modifier::DIM));
+    let l = lay("> aaaa bbbb cccc dddd eeee", 20);
+    assert_eq!(texts(&l), ["│ aaaa bbbb cccc", "│ dddd eeee"]);
+    let l = lay("- > aaaa bbbb cccc dddd", 20);
+    assert!(l.rows.iter().all(|r| r.text().width() <= 18));
+}
+
+#[test]
+fn footnote_references_render_as_bracketed_numbers() {
+    let l = lay("see[^a] and[^b]\n\n[^a]: A\n[^b]: B", 40);
+    assert_eq!(texts(&l)[0], "see[1] and[2]");
+}
+
+#[test]
+fn footnote_definitions_are_listed_at_the_end_of_the_document_under_a_rule() {
+    let l = lay(
+        "see[^a]\n\n[^a]: first note that is long enough to wrap",
+        20,
+    );
+    let t = texts(&l);
+    assert_eq!(t[0], "see[1]");
+    let rule = t.iter().position(|s| s.starts_with('─')).expect("rule");
+    assert_eq!(l.rows[rule].kind, RowKind::Rule);
+    assert_eq!(t[rule + 1], "[1] first note");
+    assert!(t[rule + 2].starts_with("    "));
+    assert!(l.rows.iter().all(|r| r.text().width() <= 18));
+}
+
+#[test]
+fn tables_nested_in_lists_and_quotes_never_exceed_the_content_width() {
+    let md = "- > | aaaaaaaaaa | bbbbbbbbbb | cccccccccc |\n  > |---|---|---|\n  > | 1 | 2 | 3 |\n";
+    for w in 20..40 {
+        let l = lay(md, w);
+        assert!(
+            l.rows
+                .iter()
+                .all(|r| r.text().width() <= usize::from(w) - 2)
+        );
+    }
+}
