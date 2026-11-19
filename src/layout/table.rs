@@ -1,7 +1,7 @@
 //! Table layout: box-drawing borders, alignment and proportional shrinking.
 
 use ratatui::style::{Modifier, Style};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::wrap::wrap;
 use super::{Row, RowKind, RowSpan, pieces, theme};
@@ -17,13 +17,26 @@ fn cell_lines(cell: &Cell, base: Style, max: usize) -> Lines {
     wrap(pieces(cell, base), max.max(1))
 }
 
-/// Column widths: natural when they fit `avail`, else shrunk proportionally.
-fn widths(natural: &[usize], avail: usize) -> Vec<usize> {
+/// Column widths: natural when they fit `avail`, else shrunk proportionally
+/// but never below `min` (2 for columns holding a wide character, else 1).
+fn widths(natural: &[usize], min: &[usize], avail: usize) -> Vec<usize> {
     let total: usize = natural.iter().sum();
     if total <= avail {
         return natural.to_vec();
     }
-    let mut out: Vec<usize> = natural.iter().map(|n| (avail * n / total).max(1)).collect();
+    let mut out: Vec<usize> = (0..natural.len())
+        .map(|i| (avail * natural[i] / total).max(min[i]))
+        .collect();
+    // Take back what the minimums over-allocated, from the widest columns.
+    while out.iter().sum::<usize>() > avail {
+        let Some(i) = (0..out.len())
+            .filter(|&i| out[i] > min[i])
+            .max_by_key(|&i| out[i])
+        else {
+            break;
+        };
+        out[i] -= 1;
+    }
     // Hand leftover columns to the widest-shrunk ones, one each.
     let mut spare = avail.saturating_sub(out.iter().sum());
     while spare > 0 {
@@ -99,28 +112,49 @@ fn band(cells: &[Lines], widths: &[usize], align: &[Align], index: usize) -> Vec
 }
 
 /// Rows of `table` for a content width of `content` columns.
+///
+/// Every row is at most `content` columns wide. When the columns cannot all
+/// fit even at their minimum width, only the leading columns that fit are
+/// drawn and each row ends with a `…` marker.
 pub fn rows(table: &Table, index: usize, content: usize) -> Vec<Row> {
-    let cols = table.header.len();
-    if cols == 0 {
+    let all_cols = table.header.len();
+    if all_cols == 0 {
         return Vec::new();
     }
     let header_style = Style::default().add_modifier(Modifier::BOLD);
     let huge = usize::MAX / 4;
-    let mut natural = vec![1usize; cols];
-    let all = std::iter::once((&table.header, header_style))
+    let mut natural = vec![1usize; all_cols];
+    let mut min = vec![1usize; all_cols];
+    let every = std::iter::once((&table.header, header_style))
         .chain(table.rows.iter().map(|r| (r, Style::default())));
-    for (row, style) in all {
-        for (c, cell) in row.iter().take(cols).enumerate() {
-            let w = cell_lines(cell, style, huge)
-                .iter()
-                .map(|l| line_width(l))
-                .max()
-                .unwrap_or(0);
+    for (row, style) in every {
+        for (c, cell) in row.iter().take(all_cols).enumerate() {
+            let lines = cell_lines(cell, style, huge);
+            let w = lines.iter().map(|l| line_width(l)).max().unwrap_or(0);
             natural[c] = natural[c].max(w);
+            if lines
+                .iter()
+                .flatten()
+                .any(|s| s.text.chars().any(|ch| ch.width() == Some(2)))
+            {
+                min[c] = 2;
+            }
         }
     }
-    let avail = content.saturating_sub(3 * cols + 1).max(cols);
-    let widths = widths(&natural, avail);
+    let fits = natural.iter().sum::<usize>() + 3 * all_cols < content;
+    let mut cols = all_cols;
+    let mut marker = false;
+    if !fits && min.iter().sum::<usize>() + 3 * all_cols + 1 > content {
+        marker = true;
+        cols = 1;
+        // One column is left for the marker.
+        while cols < all_cols && min[..=cols].iter().sum::<usize>() + 3 * (cols + 1) + 2 <= content
+        {
+            cols += 1;
+        }
+    }
+    let avail = content.saturating_sub(3 * cols + 1 + usize::from(marker));
+    let widths = widths(&natural[..cols], &min[..cols], avail);
     let lay = |row: &[Cell], style: Style| -> Vec<Lines> {
         (0..cols)
             .map(|c| match row.get(c) {
@@ -146,5 +180,14 @@ pub fn rows(table: &Table, index: usize, content: usize) -> Vec<Row> {
         ));
     }
     out.push(border(&widths, '└', '┴', '┘', index));
+    if marker {
+        for row in &mut out {
+            row.spans.push(RowSpan {
+                text: "…".into(),
+                style: theme::dim(),
+                link: None,
+            });
+        }
+    }
     out
 }
