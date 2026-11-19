@@ -18,6 +18,7 @@ ratatui = "0.30.2"
 ratatui-image = { version = "11.1.0", default-features = false, features = ["image-defaults", "crossterm"] }
 resvg = "0.50.0"
 syntect = "5.3.0"
+unicode-width = "0.2.3"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
