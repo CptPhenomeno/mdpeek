@@ -2,6 +2,7 @@ use ratatui::style::{Color, Modifier};
 
 use super::*;
 use crate::doc::{Document, Source};
+use unicode_width::UnicodeWidthStr;
 
 const CELL: (u16, u16) = (10, 20);
 
@@ -142,4 +143,102 @@ fn width_below_twenty_columns_yields_too_narrow_state() {
     assert!(l.rows.is_empty());
     assert_eq!(lay("hello", 20).state, State::Ready);
     assert_eq!(lay("", 40).state, State::Empty);
+}
+
+fn table_text(md: &str, width: u16) -> Vec<String> {
+    texts(&lay(md, width))
+}
+
+#[test]
+fn table_is_drawn_with_box_drawing_borders_and_a_bold_header_row() {
+    let l = lay("| a | b |\n|---|---|\n| 1 | 2 |", 40);
+    assert_eq!(
+        texts(&l),
+        [
+            "┌───┬───┐",
+            "│ a │ b │",
+            "├───┼───┤",
+            "│ 1 │ 2 │",
+            "└───┴───┘"
+        ]
+    );
+    assert!(span(&l, "a").style.add_modifier.contains(Modifier::BOLD));
+    assert!(!span(&l, "1").style.add_modifier.contains(Modifier::BOLD));
+}
+
+#[test]
+fn table_cells_follow_left_center_and_right_alignment_from_the_delimiter_row() {
+    let t = table_text(
+        "| l | c | r |\n|:--|:-:|--:|\n| aaaa | bbbb | cccc |\n| x | y | z |",
+        60,
+    );
+    assert_eq!(t[1], "│ l    │  c   │    r │");
+    assert_eq!(t[4], "│ x    │  y   │    z │");
+}
+
+#[test]
+fn table_that_fits_the_pane_keeps_natural_column_widths() {
+    let t = table_text("| a | bbb |\n|---|---|\n| cc | d |", 60);
+    assert_eq!(t[0], "┌────┬─────┐");
+    assert_eq!(t[3], "│ cc │ d   │");
+}
+
+#[test]
+fn table_wider_than_the_pane_shrinks_its_columns_proportionally_to_fit() {
+    let md = "| aaaaaaaaaa | bbbbbbbbbbbbbbbbbbbb |\n|---|---|\n| x | y |";
+    let l = lay(md, 20);
+    for row in &l.rows {
+        assert!(row.text().chars().count() <= 18, "{:?}", row.text());
+    }
+    let top = l.rows[0].text();
+    let cols: Vec<usize> = top.split('┬').map(|s| s.chars().count()).collect();
+    // the 20-wide column keeps more room than the 10-wide one
+    assert!(cols[1] > cols[0], "{top}");
+    assert_eq!(top.chars().count(), 18);
+}
+
+#[test]
+fn shrunk_table_cell_text_wraps_inside_its_column_and_the_row_grows() {
+    let t = table_text("| aaaa bbbb cccc | d |\n|---|---|\n| x | y |", 20);
+    // content 18: borders 7, columns 11 -> widths 10 and 1
+    assert_eq!(t[0], "┌────────────┬───┐");
+    assert_eq!(&t[1..3], ["│ aaaa bbbb  │ d │", "│ cccc       │   │"]);
+    assert_eq!(t[4], "│ x          │ y │");
+}
+
+#[test]
+fn table_cell_inline_styles_survive_wrapping() {
+    let l = lay("| **bold words here** | h |\n|---|---|\n| x | y |", 20);
+    let bold: Vec<&RowSpan> = l
+        .rows
+        .iter()
+        .flat_map(|r| &r.spans)
+        .filter(|s| s.text.contains("bold") || s.text.contains("words") || s.text.contains("here"))
+        .collect();
+    assert!(bold.len() >= 2);
+    assert!(
+        bold.iter()
+            .all(|s| s.style.add_modifier.contains(Modifier::BOLD))
+    );
+    let l = lay("| h |\n|---|\n| aa `code` bb cc dd ee |", 20);
+    assert!(span(&l, "code").style.bg.is_some());
+}
+
+#[test]
+fn table_with_more_columns_than_fit_never_exceeds_the_content_width() {
+    let md = "| a | b | c | d | e | f | g | h |\n|---|---|---|---|---|---|---|---|\n| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |";
+    let l = lay(md, 20);
+    for row in &l.rows {
+        assert!(row.text().width() <= 18, "{:?}", row.text());
+    }
+    assert!(l.rows[1].text().ends_with('…'));
+}
+
+#[test]
+fn wide_characters_in_a_tightly_shrunk_table_keep_rows_aligned_within_the_content_width() {
+    let md = "| 漢漢漢漢漢漢漢漢 | 漢字 漢字 漢字 | 漢 |\n|---|---|---|\n| 漢 | b | c |";
+    let l = lay(md, 20);
+    let widths: Vec<usize> = l.rows.iter().map(|r| r.text().width()).collect();
+    assert!(widths.iter().all(|w| *w == widths[0]), "{widths:?}");
+    assert!(widths[0] <= 18, "{widths:?}");
 }

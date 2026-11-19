@@ -5,6 +5,7 @@ use ratatui::style::Style;
 use crate::doc::{Block, Document, Inline};
 use wrap::{Piece, chunk, wrap};
 
+mod table;
 mod theme;
 mod wrap;
 
@@ -35,6 +36,8 @@ pub enum RowKind {
     Heading(u8),
     /// A horizontal rule filling the content width.
     Rule,
+    /// A line of a table: border or cells.
+    Table,
     /// Spacing between blocks.
     Blank,
 }
@@ -148,6 +151,7 @@ fn block_rows(block: &Block, index: usize, content: usize) -> Vec<Row> {
             };
             make(RowKind::Text, chunk(text, &like, content))
         }
+        Block::Table(t) => table::rows(t, index, content),
         // Lists, quotes, code, tables and diagrams are laid out by later stages.
         _ => Vec::new(),
     }
