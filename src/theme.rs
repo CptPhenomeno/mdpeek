@@ -21,6 +21,10 @@ pub const LINE: Color = Color::Rgb(88, 91, 112);
 pub const ACCENT: Color = Color::Rgb(137, 220, 235);
 /// Link foreground.
 pub const LINK: Color = Color::Rgb(97, 175, 239);
+/// Strong text foreground (stub).
+pub const STRONG: Color = FG;
+/// Emphasis foreground (stub).
+pub const EMPHASIS: Color = FG;
 /// Background of inline code.
 pub const CODE_BG: Color = Color::Rgb(49, 50, 68);
 
