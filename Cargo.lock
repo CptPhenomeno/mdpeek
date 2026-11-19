@@ -3021,6 +3021,7 @@ dependencies = [
  "ratatui-image",
  "resvg",
  "syntect",
+ "tempfile",
 ]
 
 [[package]]

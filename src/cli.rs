@@ -137,10 +137,8 @@ mod tests {
             .into_config()
     }
 
-    fn tmp(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("readmd-cli-{}-{name}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        dir
+    fn tmp() -> tempfile::TempDir {
+        tempfile::tempdir().unwrap()
     }
 
     #[test]
@@ -172,7 +170,8 @@ mod tests {
 
     #[test]
     fn uppercase_extension_is_accepted() {
-        let f = tmp("upper").join("A.MD");
+        let dir = tmp();
+        let f = dir.path().join("A.MD");
         fs::write(&f, "# x").unwrap();
         let c = config([f.to_str().unwrap()]).unwrap();
         assert_eq!(c.target, StartTarget::File(f));
@@ -180,14 +179,16 @@ mod tests {
 
     #[test]
     fn directory_yields_directory_target() {
-        let d = tmp("dir");
+        let dir = tmp();
+        let d = dir.path().to_path_buf();
         let c = config([d.to_str().unwrap()]).unwrap();
         assert_eq!(c.target, StartTarget::Directory(d));
     }
 
     #[test]
     fn missing_path_is_not_found() {
-        let p = tmp("missing").join("nope.md");
+        let dir = tmp();
+        let p = dir.path().join("nope.md");
         assert!(matches!(
             config([p.to_str().unwrap()]),
             Err(CliError::NotFound(_))
@@ -196,7 +197,8 @@ mod tests {
 
     #[test]
     fn unsupported_extension_is_rejected() {
-        let f = tmp("ext").join("a.txt");
+        let dir = tmp();
+        let f = dir.path().join("a.txt");
         fs::write(&f, "x").unwrap();
         let err = config([f.to_str().unwrap()]).unwrap_err();
         assert!(matches!(err, CliError::UnsupportedExtension(_)));

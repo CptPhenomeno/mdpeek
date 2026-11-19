@@ -20,15 +20,14 @@ fn run(args: &[&std::ffi::OsStr]) -> std::process::Output {
         .unwrap()
 }
 
-fn tmpdir(name: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("readmd-it-{}-{name}", std::process::id()));
-    std::fs::create_dir_all(&d).unwrap();
-    d
+fn tmpdir() -> tempfile::TempDir {
+    tempfile::tempdir().unwrap()
 }
 
 #[test]
 fn missing_path_exits_2_and_names_path() {
-    let p = tmpdir("missing").join("gone.md");
+    let dir = tmpdir();
+    let p = dir.path().join("gone.md");
     let out = run(&[p.as_os_str()]);
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("gone.md"));
@@ -36,7 +35,8 @@ fn missing_path_exits_2_and_names_path() {
 
 #[test]
 fn unsupported_extension_exits_2_and_lists_supported() {
-    let p = tmpdir("ext").join("a.txt");
+    let dir = tmpdir();
+    let p = dir.path().join("a.txt");
     std::fs::write(&p, "x").unwrap();
     let out = run(&[p.as_os_str()]);
     assert_eq!(out.status.code(), Some(2));
@@ -50,12 +50,14 @@ fn unsupported_extension_exits_2_and_lists_supported() {
 #[test]
 fn unreadable_file_exits_2() {
     use std::os::unix::fs::PermissionsExt;
-    let p = tmpdir("unreadable").join("a.md");
+    let dir = tmpdir();
+    let p = dir.path().join("a.md");
     std::fs::write(&p, "x").unwrap();
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o000)).unwrap();
     if std::fs::File::open(&p).is_ok() {
         return; // running as root: permissions are not enforced
     }
     let out = run(&[p.as_os_str()]);
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
