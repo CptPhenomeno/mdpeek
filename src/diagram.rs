@@ -196,7 +196,38 @@ fn renderer() -> Renderer {
 /// theme variables say; over the page background that reads as a grey smear. The label
 /// background (`edgeLabelBackground`) is made fully opaque.
 fn opaque_edge_labels(svg: &str) -> String {
-    svg.replace(".edgeLabel rect{opacity:0.5;", ".edgeLabel rect{opacity:1;")
+    let svg = svg.replace(".edgeLabel rect{opacity:0.5;", ".edgeLabel rect{opacity:1;");
+    let svg = svg.replace(
+        "<line stroke=\"currentColor\"",
+        &format!("<line stroke=\"{}\"", crate::theme::hex(crate::theme::LINE)),
+    );
+    light_terminal_labels(&svg)
+}
+
+/// Class cardinality labels (`edgeTerminals`) are drawn straight on the page with the
+/// same dark text colour as node labels, and have no background. They get the body
+/// foreground instead.
+fn light_terminal_labels(svg: &str) -> String {
+    use crate::theme::{BG, FG, hex};
+    let (dark, light) = (hex(BG), hex(FG));
+    let mut out = String::with_capacity(svg.len());
+    for (i, part) in svg.split("<text ").enumerate() {
+        if i == 0 {
+            out.push_str(part);
+            continue;
+        }
+        let end = part.find("</text>").unwrap_or(part.len());
+        let (body, rest) = part.split_at(end);
+        out.push_str("<text ");
+        let tag_end = body.find('>').unwrap_or(body.len());
+        if body[..tag_end].contains("edgeTerminals") {
+            out.push_str(&body.replace(&dark, &light));
+        } else {
+            out.push_str(body);
+        }
+        out.push_str(rest);
+    }
+    out
 }
 
 /// Runs `f`, turning a panic into `Rendered::Error`.

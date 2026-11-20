@@ -192,3 +192,13 @@ fn class_cardinality_labels_are_not_drawn_in_the_page_background_colour() {
         );
     }
 }
+
+#[test]
+fn gantt_grid_lines_use_the_line_colour_not_black() {
+    let Rendered::Svg(svg) = render_svg(SAMPLES[3]) else {
+        panic!("no svg");
+    };
+    assert!(!svg.contains("<line stroke=\"currentColor\""));
+    let line = readmd::theme::hex(readmd::theme::LINE);
+    assert!(svg.contains(&format!("<line stroke=\"{line}\"")));
+}
