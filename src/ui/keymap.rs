@@ -15,6 +15,7 @@ pub enum Action {
     FocusNext,
     FocusPrev,
     ClearFocus,
+    Activate,
     Quit,
 }
 
@@ -119,6 +120,13 @@ pub const BINDINGS: &[Binding] = &[
         Action::ClearFocus,
         "Esc",
         "Clear the focus",
+    ),
+    bind(
+        KeyCode::Enter,
+        NONE,
+        Action::Activate,
+        "Enter",
+        "Open the focused link or diagram",
     ),
     bind(
         KeyCode::Char('q'),

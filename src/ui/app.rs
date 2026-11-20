@@ -15,10 +15,12 @@ use crate::graphics::{PictureRequest, PictureSet};
 use crate::layout::{self, Diagrams, Layout, MARGIN, PictureKey, State};
 use crate::theme;
 
+mod activate;
 mod focus;
 #[cfg(test)]
 mod tests;
 
+pub use super::opener::{Opener, SystemOpener};
 use super::pictures::{Clock, JobSink, Pictures};
 
 /// Cell size in pixels until the terminal is queried.
@@ -56,6 +58,10 @@ pub struct App {
     text_mode: bool,
     /// Focused link or diagram (SPEC §3.6.1).
     focus: Option<focus::FocusId>,
+    /// Hands URLs to the system (a fake in tests).
+    opener: Box<dyn Opener>,
+    /// Diagram Enter asked to see full screen; the full-screen view consumes it.
+    fullscreen_request: Option<PictureKey>,
     quit: bool,
 }
 
@@ -84,6 +90,8 @@ impl App {
             overlays: Vec::new(),
             text_mode: false,
             focus: None,
+            opener: Box::new(super::opener::Unavailable),
+            fullscreen_request: None,
             quit: false,
         };
         app.relayout();
@@ -289,6 +297,7 @@ impl App {
             Action::FocusNext => self.focus_step(true),
             Action::FocusPrev => self.focus_step(false),
             Action::ClearFocus => self.clear_focus(),
+            Action::Activate => self.activate(),
             Action::Quit => self.quit = true,
         }
         self.request_pictures();
