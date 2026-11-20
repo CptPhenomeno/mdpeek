@@ -134,3 +134,19 @@ Debug build is about 10x slower (flowchart 125 ms). merman's own render time was
 3. Errors only occur with `ParseOptions::strict()`; the default parse mode was not probed for lenient behaviour.
 4. Dark theme is a Mermaid theme, not a transparent-aware one: the background is transparent but node fills are dark, so the diagram assumes a dark terminal background.
 5. A real merman panic could not be provoked; §4.7 containment rests on `catch_unwind` and unwinding panics.
+
+## Label clipping and the bundled font (KB-40)
+
+merman lays out label boxes from its own text measurement, and wraps each label
+in a nested `<svg style="overflow:hidden">` of exactly the measured size. With the
+default `"trebuchet ms", verdana, arial` stack, merman measured with its built-in
+tables while resvg drew with whatever fontdb resolved (Noto Sans here), which is
+wider: labels lost about one character at both ends (class, mindmap, state).
+
+Fix: the diagram font is bundled (Liberation Sans regular and bold, SIL OFL,
+`assets/fonts`). `diagram::render_svg` builds a merman `NativeFontContext` from
+those bytes (feature `native-fonts`), so merman measures with the real glyph
+advances, sets `fontFamily` to `Liberation Sans`, and `raster` loads the same bytes
+into its fontdb. Measured and drawn widths agree, on machines without Trebuchet or
+Verdana as well. Regression: `tests/diagram_labels.rs` rasterises with and without
+`overflow:hidden` and requires the same pixels (up to anti-aliasing at the box edge).

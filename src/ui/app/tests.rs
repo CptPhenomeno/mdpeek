@@ -458,3 +458,209 @@ fn no_cell_has_the_default_background_with_a_picture_and_an_overlay_crossing_it(
         }
     }
 }
+
+// ---- pictures wired to the render worker (KB-40) ----
+
+mod pictures {
+    use std::sync::{Arc, Mutex};
+
+    use image::RgbaImage;
+
+    use super::*;
+    use crate::layout::PictureKey;
+    use crate::render_worker::{Job, Mode, Outcome, RenderResult};
+    use crate::ui::JobSink;
+
+    type Jobs = Arc<Mutex<Vec<Job>>>;
+
+    /// Records every submitted job; results are fed back by the tests.
+    #[derive(Debug)]
+    struct FakeSink(Jobs);
+
+    impl JobSink for FakeSink {
+        fn submit(&self, job: Job) -> bool {
+            self.0.lock().unwrap().push(job);
+            true
+        }
+        fn set_generation(&self, _: u64) {}
+    }
+
+    fn pic_doc_app(md: &str, width: u16, height: u16) -> (App, Jobs) {
+        let jobs = Jobs::default();
+        let mut app = App::new(doc(md), "a.md".into());
+        app.set_job_sink(Box::new(FakeSink(jobs.clone())));
+        app.resize(width, height);
+        (app, jobs)
+    }
+
+    fn renders(jobs: &Jobs) -> Vec<PictureKey> {
+        jobs.lock()
+            .unwrap()
+            .iter()
+            .filter(|j| j.mode == Mode::Render)
+            .map(|j| j.key.clone())
+            .collect()
+    }
+
+    fn last_job(jobs: &Jobs, key: &PictureKey, mode: Mode) -> Job {
+        jobs.lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|j| &j.key == key && j.mode == mode)
+            .cloned()
+            .expect("job submitted")
+    }
+
+    fn result_of(job: &Job, outcome: Outcome) -> RenderResult {
+        RenderResult {
+            key: job.key.clone(),
+            generation: job.generation,
+            width: job.width,
+            height: job.height,
+            outcome,
+        }
+    }
+
+    fn deliver_picture(app: &mut App, jobs: &Jobs, key: PictureKey, size: (u32, u32)) {
+        let job = last_job(jobs, &key, Mode::Render);
+        let image = Arc::new(RgbaImage::new(size.0, size.1));
+        app.on_result(result_of(
+            &job,
+            Outcome::Picture {
+                image,
+                natural: size,
+            },
+        ));
+    }
+
+    /// A diagram, then `n` one-line paragraphs, so the next diagram is far away.
+    fn diagrams_far_apart() -> String {
+        let filler = many(40);
+        format!(
+            "```mermaid\ngraph TD\n A-->B\n```\n\n{filler}\n\n```mermaid\ngraph TD\n C-->D\n```\n\n{filler}\n"
+        )
+    }
+
+    #[test]
+    fn diagram_slot_shows_the_rendering_placeholder_until_its_picture_arrives() {
+        let (mut app, jobs) = pic_doc_app("```mermaid\ngraph TD\n A-->B\n```\n", 40, 12 + CHROME);
+        let text = screen_text(&mut app, 40, 12 + CHROME);
+        assert!(text.contains("Rendering diagram"), "{text}");
+        assert_eq!(renders(&jobs), vec![PictureKey::Diagram(0)]);
+        assert!(!text.contains('#'));
+        deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), (100, 40));
+        let text = screen_text(&mut app, 40, 12 + CHROME);
+        assert!(!text.contains("Rendering diagram"), "{text}");
+        assert!(text.contains('#'), "{text}");
+    }
+
+    #[test]
+    fn an_arriving_picture_triggers_a_relayout_with_the_real_slot_height_and_keeps_the_reading_position()
+     {
+        let md = format!("```mermaid\ngraph TD\n A-->B\n```\n\n{}", many(30));
+        let (mut app, jobs) = pic_doc_app(&md, 40, 10 + CHROME);
+        let rows_before = app.row_count();
+        app.scroll_by(14);
+        let anchor = app.top_anchor();
+        assert!(anchor.is_some_and(|(block, _)| block > 0));
+        deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), (100, 40));
+        // 10 placeholder rows became 2 picture rows.
+        assert_eq!(app.row_count(), rows_before - 8);
+        assert_eq!(app.top_anchor(), anchor);
+        assert_eq!(app.scroll(), 6);
+    }
+
+    #[test]
+    fn only_slots_within_one_screen_of_the_viewport_are_submitted_for_rendering() {
+        let (_app, jobs) = pic_doc_app(&diagrams_far_apart(), 40, 10 + CHROME);
+        assert_eq!(renders(&jobs), vec![PictureKey::Diagram(0)]);
+    }
+
+    #[test]
+    fn scrolling_a_slot_into_range_submits_its_render_job_once() {
+        let (mut app, jobs) = pic_doc_app(&diagrams_far_apart(), 40, 10 + CHROME);
+        let second = app.layout.rows.iter().position(|r| {
+            r.slot
+                .as_ref()
+                .is_some_and(|s| s.key == PictureKey::Diagram(1))
+        });
+        let second = second.expect("second diagram laid out");
+        // One page at a time until the slot is one screen below the viewport.
+        loop {
+            press(&mut app, KeyCode::PageDown);
+            if app.scroll() + 2 * app.viewport_height() > second {
+                break;
+            }
+            assert_eq!(renders(&jobs), vec![PictureKey::Diagram(0)]);
+        }
+        assert_eq!(
+            renders(&jobs),
+            vec![PictureKey::Diagram(0), PictureKey::Diagram(1)]
+        );
+        press(&mut app, KeyCode::Char('j'));
+        press(&mut app, KeyCode::Char('k'));
+        press(&mut app, KeyCode::PageUp);
+        press(&mut app, KeyCode::PageDown);
+        assert_eq!(renders(&jobs).len(), 2);
+    }
+
+    #[test]
+    fn cached_pictures_are_reused_when_scrolling_back() {
+        let (mut app, jobs) = pic_doc_app(&diagrams_far_apart(), 40, 10 + CHROME);
+        deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), (100, 40));
+        press(&mut app, KeyCode::Char('G'));
+        press(&mut app, KeyCode::Char('g'));
+        press(&mut app, KeyCode::Char('g'));
+        assert_eq!(app.scroll(), 0);
+        let text = screen_text(&mut app, 40, 10 + CHROME);
+        assert!(text.contains('#'), "{text}");
+        let again = renders(&jobs)
+            .into_iter()
+            .filter(|k| *k == PictureKey::Diagram(0))
+            .count();
+        assert_eq!(again, 1);
+    }
+
+    #[test]
+    fn a_failed_diagram_shows_the_error_block_while_the_rest_of_the_document_renders() {
+        let md = "before\n\n```mermaid\nnot a diagram\n```\n\nafter\n";
+        let (mut app, jobs) = pic_doc_app(md, 50, 20 + CHROME);
+        let job = last_job(&jobs, &PictureKey::Diagram(0), Mode::Render);
+        app.on_result(result_of(
+            &job,
+            Outcome::Error("Parse error on line 1".into()),
+        ));
+        let text = screen_text(&mut app, 50, 20 + CHROME);
+        assert!(text.contains("Parse error on line 1"), "{text}");
+        assert!(text.contains("not a diagram"), "{text}");
+        assert!(text.contains("before") && text.contains("after"), "{text}");
+        assert!(!text.contains("Rendering diagram"), "{text}");
+    }
+
+    #[test]
+    fn snapshot_of_a_document_with_a_diagram_a_local_image_a_missing_image_and_a_remote_image() {
+        let md = "```mermaid\ngraph TD\n A-->B\n```\n\n![local](pic.png)\n\n![gone](gone.png)\n\n![far](https://example.com/x.png)\n\nend\n";
+        let (mut app, jobs) = pic_doc_app(md, 40, 30 + CHROME);
+        deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), (200, 60));
+        let local = PictureKey::Image("pic.png".into());
+        let gone = PictureKey::Image("gone.png".into());
+        let measure = last_job(&jobs, &local, Mode::Measure);
+        app.on_result(result_of(&measure, Outcome::Natural(120, 60)));
+        deliver_picture(&mut app, &jobs, local, (120, 60));
+        let measure = last_job(&jobs, &gone, Mode::Measure);
+        app.on_result(result_of(
+            &measure,
+            Outcome::Error("image not found".into()),
+        ));
+        // The remote image is never fetched or measured.
+        assert!(jobs.lock().unwrap().iter().all(|j| matches!(
+            &j.key,
+            PictureKey::Diagram(_) | PictureKey::Image(_)
+        ) && j.key
+            != PictureKey::Image("https://example.com/x.png".into())));
+        let mut terminal = Terminal::new(TestBackend::new(40, 30 + CHROME)).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+        insta::assert_snapshot!(terminal.backend());
+    }
+}

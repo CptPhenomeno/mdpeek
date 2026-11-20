@@ -12,11 +12,13 @@ use unicode_width::UnicodeWidthStr;
 use super::keymap::{Action, action_for};
 use crate::doc::Document;
 use crate::graphics::{PictureRequest, PictureSet};
-use crate::layout::{self, Layout, MARGIN, PictureKey, State};
+use crate::layout::{self, Diagrams, Layout, MARGIN, PictureKey, State};
 use crate::theme;
 
 #[cfg(test)]
 mod tests;
+
+use super::pictures::{JobSink, Pictures};
 
 /// Cell size in pixels until the terminal is queried.
 const CELL: (u16, u16) = (10, 20);
@@ -36,11 +38,15 @@ pub struct App {
     rel_path: String,
     /// Terminal size, once known.
     size: (u16, u16),
+    /// Whether `size` is the real terminal size: no picture is requested before.
+    sized: bool,
     scroll: usize,
     message: Option<String>,
     /// Whether the document pane has the focus (the sidebar arrives later).
     focused: bool,
     pictures: PictureSet,
+    /// Render jobs, natural sizes and diagram states.
+    jobs: Pictures,
     /// Cell size in pixels, as the terminal reports it.
     cell: (u16, u16),
     /// Open overlays (popups): pictures leave them uncovered.
@@ -53,6 +59,7 @@ impl App {
         let message = doc
             .invalid_utf8
             .then(|| "File is not valid UTF-8".to_owned());
+        let jobs = Pictures::new(&doc);
         let mut app = Self {
             doc,
             layout: Layout {
@@ -62,10 +69,12 @@ impl App {
             },
             rel_path,
             size: (80, 24),
+            sized: false,
             scroll: 0,
             message,
             focused: true,
             pictures: PictureSet::placeholder('#'),
+            jobs,
             cell: CELL,
             overlays: Vec::new(),
             quit: false,
@@ -76,19 +85,28 @@ impl App {
 
     /// Terminal size changed (or is known for the first time); the top row stays put.
     pub fn resize(&mut self, width: u16, height: u16) {
+        let first = !self.sized;
+        self.sized = true;
         if self.size == (width, height) {
+            if first {
+                self.request_pictures();
+            }
             return;
         }
         let width_changed = self.pane_width_of(self.size.0) != self.pane_width_of(width);
         // Picture slots are fitted to the pane height.
         let height_changed = self.size.1 != height;
         self.size = (width, height);
+        if width_changed {
+            self.jobs.next_generation();
+        }
         if width_changed || (height_changed && self.layout.rows.iter().any(|r| r.slot.is_some())) {
             let anchor = self.top_anchor();
             self.relayout();
             self.scroll = anchor.map_or(0, |a| self.scroll_of(a));
         }
         self.scroll = self.scroll.min(self.max_scroll());
+        self.request_pictures();
     }
 
     /// Index of the first visible row.
@@ -131,8 +149,44 @@ impl App {
 
     /// Hand a decoded picture to the pane: slots are laid out at its size.
     pub fn add_picture(&mut self, key: PictureKey, img: image::DynamicImage) {
+        self.jobs
+            .set_ready(key.clone(), (img.width(), img.height()));
         self.pictures.insert(key, img);
         self.relayout_keeping_position();
+    }
+
+    /// Where render jobs go (the background worker); due jobs are submitted now.
+    pub fn set_job_sink(&mut self, sink: Box<dyn JobSink>) {
+        self.jobs.set_sink(sink);
+        self.request_pictures();
+    }
+
+    /// A render job finished: a picture goes to the picture set and the document
+    /// is laid out again with the real slot size, keeping the reading position.
+    pub fn on_result(&mut self, result: crate::render_worker::RenderResult) {
+        let Some(arrived) = self.jobs.accept(result) else {
+            return;
+        };
+        if let Some(arrived) = arrived {
+            self.pictures.insert(
+                arrived.key,
+                image::DynamicImage::ImageRgba8((*arrived.image).clone()),
+            );
+        }
+        self.relayout_keeping_position();
+    }
+
+    /// Whether render jobs are still outstanding.
+    pub fn has_outstanding(&self) -> bool {
+        self.jobs.has_outstanding()
+    }
+
+    fn request_pictures(&mut self) {
+        if !self.sized {
+            return;
+        }
+        self.jobs
+            .request(&self.layout, self.scroll, self.viewport_height());
     }
 
     /// Rectangles of open overlays; pictures never draw under them.
@@ -146,6 +200,7 @@ impl App {
         self.scroll = anchor
             .map_or(0, |a| self.scroll_of(a))
             .min(self.max_scroll());
+        self.request_pictures();
     }
 
     pub fn should_quit(&self) -> bool {
@@ -169,6 +224,7 @@ impl App {
             Action::Bottom => self.scroll = self.max_scroll(),
             Action::Quit => self.quit = true,
         }
+        self.request_pictures();
     }
 
     pub fn handle_mouse(&mut self, mouse: MouseEvent) {
@@ -178,6 +234,7 @@ impl App {
             MouseEventKind::ScrollUp => self.scroll_by(-rows),
             _ => {}
         }
+        self.request_pictures();
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -241,12 +298,16 @@ impl App {
     }
 
     fn relayout(&mut self) {
-        self.layout = layout::layout_with(
+        self.layout = layout::layout_diagrams(
             &self.doc,
             self.pane_width_of(self.size.0),
             self.viewport_height().try_into().unwrap_or(u16::MAX),
             self.cell,
-            &self.pictures,
+            &self.jobs,
+            Diagrams {
+                states: &self.jobs,
+                text_mode: false,
+            },
         );
     }
 

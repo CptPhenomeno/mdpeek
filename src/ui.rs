@@ -3,11 +3,15 @@
 pub mod app;
 pub mod keymap;
 pub mod overlay;
+pub mod pictures;
 pub mod terminal;
 
 pub use app::App;
+pub use pictures::JobSink;
 
 use std::io;
+use std::sync::mpsc;
+use std::time::Duration;
 
 use crossterm::event::{self, Event};
 use ratatui::{Terminal, backend::CrosstermBackend};
@@ -18,6 +22,15 @@ use crate::graphics::{
     PictureSet,
     detect::{StdioDetector, select},
 };
+use crate::picture_cache::PictureCache;
+use crate::render_worker::RenderWorker;
+
+/// Render worker threads.
+const RENDER_THREADS: usize = 2;
+/// Poll interval while render jobs are outstanding.
+const RESULT_POLL: Duration = Duration::from_millis(50);
+/// Poll interval when nothing is outstanding (only to notice a quit).
+const IDLE_POLL: Duration = Duration::from_secs(1);
 
 /// Run the viewer on `doc` until the user quits; `rel_path` is shown in the status bar.
 /// `protocol` is the `--protocol` choice; the detected one is announced in the status bar.
@@ -35,13 +48,34 @@ pub fn run(doc: Document, rel_path: String, protocol: ProtocolChoice) -> io::Res
         crate::theme::bg_rgba(),
     ));
     app.set_message(format!("Graphics: {}", selection.label()));
+    // Diagrams and images render in the background; results come back here.
+    let (tx, rx) = mpsc::channel();
+    let worker = RenderWorker::new(PictureCache::with_default_limit(), tx, RENDER_THREADS);
+    app.set_job_sink(Box::new(pictures::WorkerSink(worker)));
+    let mut dirty = true;
     while !app.should_quit() {
-        terminal.draw(|f| app.render(f))?;
-        match event::read()? {
-            Event::Key(key) => app.handle_key(key),
-            Event::Mouse(mouse) => app.handle_mouse(mouse),
-            Event::Resize(width, height) => app.resize(width, height),
-            _ => {}
+        if dirty {
+            terminal.draw(|f| app.render(f))?;
+        }
+        // Wake up regularly only while jobs are outstanding.
+        let timeout = if app.has_outstanding() {
+            RESULT_POLL
+        } else {
+            IDLE_POLL
+        };
+        dirty = false;
+        if event::poll(timeout)? {
+            dirty = true;
+            match event::read()? {
+                Event::Key(key) => app.handle_key(key),
+                Event::Mouse(mouse) => app.handle_mouse(mouse),
+                Event::Resize(width, height) => app.resize(width, height),
+                _ => {}
+            }
+        }
+        while let Ok(result) = rx.try_recv() {
+            dirty = true;
+            app.on_result(result);
         }
     }
     Ok(())
