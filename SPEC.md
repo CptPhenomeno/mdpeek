@@ -232,6 +232,10 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
   - Every key in §3.6–§3.10 works as specified and is listed in the F1 help.
   - Opening the showcase document takes under 300 ms to first paint (diagrams may still be rendering) on a modern laptop.
   - `readmd missing.md` exits with code 2 and a clear message.
+- Delivery (user request, modelled on the `kb` repository's GitHub workflows):
+  - `.github/workflows/check.yml` runs `make check` on every push to `develop`, through a composite action `.github/actions/setup-and-check` (Rust toolchain from `rust-version`, cargo cache, `make check`).
+  - `.github/workflows/deploy.yml` runs on `v*` tags with `contents: write`: setup and check, then release binaries `readmd-<version>-<os>-<arch>` for linux/amd64, linux/arm64, darwin/amd64 and darwin/arm64 (one native runner per target, so no cross-compilation toolchain is needed), `checksums.txt` (sha256), release notes extracted from `CHANGELOG.md` by `.github/scripts/release-notes.sh <tag>`, and `gh release create` with the binaries and checksums.
+  - `CHANGELOG.md` follows Keep a Changelog with Semantic Versioning; the first entry is `0.1.0`.
 
 ## 6. Open questions
 
