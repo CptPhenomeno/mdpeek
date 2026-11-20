@@ -110,7 +110,9 @@ fn sort(nodes: &mut [Node]) {
 pub struct Start {
     pub root: PathBuf,
     pub sidebar_visible: bool,
-    pub tree: Vec<Node>,
+    /// `None` when not scanned yet: a file target starts with the sidebar hidden,
+    /// so the scan is deferred until the sidebar is first shown.
+    pub tree: Option<Vec<Node>>,
     /// `None` means the empty state.
     pub initial_file: Option<PathBuf>,
 }
@@ -123,7 +125,7 @@ pub fn start(target: &StartTarget) -> io::Result<Start> {
                 Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
                 _ => PathBuf::from("."),
             };
-            let tree = scan(&root)?;
+            let tree = Some(scan(&root)?);
             Ok(Start {
                 root,
                 sidebar_visible: false,
@@ -144,7 +146,7 @@ pub fn start(target: &StartTarget) -> io::Result<Start> {
             Ok(Start {
                 root: root.clone(),
                 sidebar_visible: true,
-                tree,
+                tree: Some(tree),
                 initial_file,
             })
         }
@@ -187,7 +189,14 @@ mod tests {
         assert_eq!(s.root, tmp.path().join("docs"));
         assert!(!s.sidebar_visible);
         assert_eq!(s.initial_file, Some(file));
-        assert_eq!(s.tree.len(), 2);
+        assert!(s.tree.is_none(), "file target must not scan its parent");
+    }
+
+    #[test]
+    fn file_target_never_fails_because_of_its_parent_directory() {
+        let file = PathBuf::from("/nonexistent-readmd-dir/a.md");
+        let s = start(&StartTarget::File(file.clone())).unwrap();
+        assert_eq!(s.initial_file, Some(file));
     }
 
     #[test]
@@ -222,7 +231,7 @@ mod tests {
         touch(tmp.path(), "notes.txt");
         let s = start(&dir_target(tmp.path())).unwrap();
         assert!(s.sidebar_visible);
-        assert!(s.tree.is_empty());
+        assert_eq!(s.tree, Some(Vec::new()));
         assert_eq!(s.initial_file, None);
     }
 
