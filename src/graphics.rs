@@ -11,6 +11,7 @@ use ratatui::{
     widgets::Widget,
 };
 use ratatui_image::{
+    FontSize,
     errors::Errors,
     picker::Picker,
     sliced::{SignedPosition, SlicedImage, SlicedProtocol},
@@ -236,14 +237,51 @@ impl PictureRenderer for SlicedRenderer {
 }
 
 /// The image to encode for `slot` and the density it is encoded at (KB-72).
+///
+/// A raster of exactly `density` times the slot size is kept as it is. Any
+/// other raster (a bitmap with fewer pixels, or one from an older slot size)
+/// falls back to density 1 and is resized to the slot, the only resample left.
+/// The result is then padded with `bg` to whole cells of `cell` pixels times
+/// the density, so the encoder maps it onto the slot's cells one to one and
+/// never stretches it.
 pub fn prepare_for_encode(
     img: &DynamicImage,
-    _slot: &Slot,
-    _cell: (u32, u32),
-    _density: u32,
-    _bg: Rgba<u8>,
+    slot: &Slot,
+    cell: (u32, u32),
+    density: u32,
+    bg: Rgba<u8>,
 ) -> (DynamicImage, u32) {
-    (img.clone(), 1)
+    let density = density.max(1);
+    let dims = (img.width(), img.height());
+    let want = (
+        slot.px.0.max(1).saturating_mul(density),
+        slot.px.1.max(1).saturating_mul(density),
+    );
+    let used = if density > 1 && dims == want {
+        density
+    } else {
+        1
+    };
+    let target = (slot.px.0.max(1) * used, slot.px.1.max(1) * used);
+    let img = if dims == target {
+        img.clone()
+    } else {
+        img.resize_exact(target.0, target.1, FilterType::Triangle)
+    };
+    let cells = (
+        u32::from(slot.cols) * cell.0 * used,
+        u32::from(slot.rows) * cell.1 * used,
+    );
+    if cells.0 <= target.0 && cells.1 <= target.1 {
+        return (img, used);
+    }
+    let mut canvas = RgbaImage::from_pixel(
+        cells.0.max(target.0),
+        cells.1.max(target.1),
+        Rgba([bg[0], bg[1], bg[2], 255]),
+    );
+    image::imageops::overlay(&mut canvas, &img.to_rgba8(), 0, 0);
+    (DynamicImage::ImageRgba8(canvas), used)
 }
 
 /// How pictures are turned into renderers.
@@ -251,7 +289,14 @@ enum Backend {
     /// Marker symbol per visible cell; no pixels (snapshot tests).
     Placeholder(char),
     /// Real terminal graphics through `ratatui-image`.
-    Sliced { picker: Picker, bg: Rgba<u8> },
+    Sliced {
+        picker: Picker,
+        /// The same protocol with a cell `density` times larger, for rasters of
+        /// `density` times the slot size; `None` at density 1.
+        dense: Option<Picker>,
+        density: u32,
+        bg: Rgba<u8>,
+    },
 }
 
 /// A decoded picture and its encoding for the current slot size.
@@ -295,8 +340,26 @@ impl PictureSet {
 
     /// Draws real graphics with the protocol of `picker`; transparent pixels
     /// are composited over `bg` (SPEC §4.2).
-    pub fn sliced(picker: Picker, bg: Rgba<u8>) -> Self {
-        Self::with(Backend::Sliced { picker, bg })
+    /// Rasters of `density` times the slot size are encoded as they are.
+    pub fn sliced(picker: Picker, bg: Rgba<u8>, density: u32) -> Self {
+        let density = density.max(1);
+        let dense = (density > 1).then(|| {
+            let font = picker.font_size();
+            // The only constructor that takes a cell size; the protocol is set back.
+            #[allow(deprecated)]
+            let mut dense = Picker::from_fontsize(FontSize::new(
+                font.width.saturating_mul(density as u16),
+                font.height.saturating_mul(density as u16),
+            ));
+            dense.set_protocol_type(picker.protocol_type());
+            dense
+        });
+        Self::with(Backend::Sliced {
+            picker,
+            dense,
+            density,
+            bg,
+        })
     }
 
     /// Adds or replaces the picture of `key`; its encoding is dropped.
@@ -325,15 +388,23 @@ impl PictureSet {
                 Backend::Placeholder(symbol) => {
                     Some(Box::new(PlaceholderRenderer { symbol: *symbol }))
                 }
-                Backend::Sliced { picker, bg } => {
-                    let img = if (entry.img.width(), entry.img.height()) == slot.px {
-                        entry.img.clone()
-                    } else {
-                        entry.img.resize_exact(
-                            slot.px.0.max(1),
-                            slot.px.1.max(1),
-                            FilterType::Triangle,
-                        )
+                Backend::Sliced {
+                    picker,
+                    dense,
+                    density,
+                    bg,
+                } => {
+                    let font = picker.font_size();
+                    let (img, used) = prepare_for_encode(
+                        &entry.img,
+                        slot,
+                        (u32::from(font.width), u32::from(font.height)),
+                        *density,
+                        *bg,
+                    );
+                    let picker = match dense {
+                        Some(dense) if used > 1 => dense,
+                        _ => picker,
                     };
                     SlicedRenderer::new(picker, img, *bg)
                         .ok()

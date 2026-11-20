@@ -80,23 +80,28 @@ fn fit_size(w: f32, h: f32, max_w: u32, max_h: u32) -> (u32, u32) {
     }
 }
 
-/// Rasterise at natural size, scaled down (aspect kept) to fit `max_w` x `max_h`.
+/// Rasterise at natural size, scaled down (aspect kept) to fit `max_w` x `max_h`
+/// (the slot size), then drawn `density` times larger: a vector picture has
+/// more pixels to give, so lines and text stay sharp when the terminal scales
+/// the image to its cell box (KB-72). The SVG is drawn once, at that final size.
 ///
-/// Never scales up. When a limit binds, that dimension equals the limit exactly.
-/// The result keeps transparency.
+/// Never scales up beyond `density` times the slot. When a limit binds, that
+/// dimension equals the limit (times `density`) exactly. The result keeps
+/// transparency.
 pub fn rasterise(
     svg: &str,
     max_w: u32,
     max_h: u32,
     density: u32,
 ) -> Result<RgbaImage, RasterError> {
-    let _ = density;
     let tree = parse(svg)?;
     let (w, h) = (tree.size().width(), tree.size().height());
     if !(w > 0.0 && h > 0.0) || max_w == 0 || max_h == 0 {
         return Err(RasterError::Size);
     }
     let (pw, ph) = fit_size(w, h, max_w, max_h);
+    let d = density.max(1);
+    let (pw, ph) = (pw.saturating_mul(d), ph.saturating_mul(d));
     let mut pm = tiny_skia::Pixmap::new(pw, ph).ok_or(RasterError::Size)?;
     let transform = tiny_skia::Transform::from_scale(pw as f32 / w, ph as f32 / h);
     resvg::render(&tree, transform, &mut pm.as_mut());
@@ -153,7 +158,9 @@ pub fn image_size(path: &Path) -> Result<(u32, u32), RasterError> {
 }
 
 /// Decode a local image (PNG, JPEG, WebP, GIF first frame, SVG) to
-/// straight-alpha RGBA, scaled down to fit `max_w` x `max_h` and never up.
+/// straight-alpha RGBA, scaled down to fit `max_w` x `max_h` (times `density`
+/// for bitmaps) and never up: a bitmap keeps its natural pixels, `density` only
+/// stops it from being scaled down as far.
 /// Missing, unreadable or corrupt files are `NotFound` (SPEC §3.5.3).
 pub fn decode_image(
     path: &Path,
@@ -161,7 +168,6 @@ pub fn decode_image(
     max_h: u32,
     density: u32,
 ) -> Result<RgbaImage, RasterError> {
-    let _ = density;
     let head = read_head(path)?;
     if is_svg(path, &head) {
         return rasterise(&read_svg(path)?, max_w, max_h, density)
@@ -177,7 +183,13 @@ pub fn decode_image(
     if w == 0 || h == 0 || max_w == 0 || max_h == 0 {
         return Err(RasterError::Size);
     }
-    let (pw, ph) = fit_size(w as f32, h as f32, max_w, max_h);
+    let d = density.max(1);
+    let (pw, ph) = fit_size(
+        w as f32,
+        h as f32,
+        max_w.saturating_mul(d),
+        max_h.saturating_mul(d),
+    );
     if (pw, ph) == (w, h) {
         return Ok(img);
     }

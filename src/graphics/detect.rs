@@ -100,9 +100,15 @@ impl Selection {
         picker
     }
 
-    /// Raster pixels per slot pixel (KB-72).
+    /// Raster pixels per slot pixel (KB-72). Kitty and iTerm2 draw an image
+    /// into a box of cells, so the terminal scales it to the box and extra
+    /// pixels only sharpen it (HiDPI). Sixel and halfblocks draw at the pixel
+    /// size (or in cells), where more pixels would make the picture bigger.
     pub fn density(&self) -> u32 {
-        1
+        match self.protocol {
+            ProtocolType::Kitty | ProtocolType::Iterm2 => 2,
+            ProtocolType::Sixel | ProtocolType::Halfblocks => 1,
+        }
     }
 
     /// Human-readable protocol name, for the status bar.

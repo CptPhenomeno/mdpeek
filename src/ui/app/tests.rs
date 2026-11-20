@@ -428,7 +428,7 @@ fn no_cell_has_the_default_background_with_a_picture_and_an_overlay_crossing_it(
     let mut app = pic_app(w, h);
     let mut picker = Picker::halfblocks();
     picker.set_protocol_type(ProtocolType::Iterm2);
-    let mut set = crate::graphics::PictureSet::sliced(picker, image::Rgba([26, 27, 38, 255]));
+    let mut set = crate::graphics::PictureSet::sliced(picker, image::Rgba([26, 27, 38, 255]), 1);
     set.insert(
         PictureKey::Diagram(0),
         image::DynamicImage::ImageRgba8(image::RgbaImage::new(40, 80)),

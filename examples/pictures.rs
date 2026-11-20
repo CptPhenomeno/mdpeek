@@ -76,7 +76,7 @@ fn main() -> io::Result<()> {
     let font = picker.font_size();
     let mut app = App::new(doc, "sample-assets/pictures.md".into());
     app.set_cell((font.width, font.height));
-    let mut set = PictureSet::sliced(picker, readmd::theme::bg_rgba());
+    let mut set = PictureSet::sliced(picker, readmd::theme::bg_rgba(), 1);
     set.insert(
         PictureKey::Image(assets.join("gradient.png")),
         image::open(assets.join("gradient.png")).unwrap(),
