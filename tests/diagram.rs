@@ -168,3 +168,27 @@ fn all_sample_diagram_types_render_with_the_readmd_palette() {
         );
     }
 }
+
+#[test]
+fn class_cardinality_labels_are_not_drawn_in_the_page_background_colour() {
+    let Rendered::Svg(svg) = render_svg(SAMPLES[2]) else {
+        panic!("no svg");
+    };
+    let bg = readmd::theme::hex(readmd::theme::BG);
+    let terminals: Vec<&str> = svg
+        .split("<text ")
+        .skip(1)
+        .filter(|t| {
+            let tag = &t[..t.find('>').unwrap_or(t.len())];
+            tag.contains("edgeTerminals")
+        })
+        .collect();
+    assert!(terminals.len() >= 2, "no cardinality labels found");
+    for t in terminals {
+        let tag = &t[..t.find('>').unwrap_or(t.len())];
+        assert!(
+            !tag.contains(&format!("fill=\"{bg}\"")) && !tag.contains(&format!("fill:{bg}")),
+            "dark text on the page background: {tag}"
+        );
+    }
+}
