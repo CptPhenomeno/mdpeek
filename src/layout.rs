@@ -76,6 +76,33 @@ impl<F: Fn(&PictureKey) -> Option<(u32, u32)>> PictureSizes for F {
     }
 }
 
+/// How one diagram is to be laid out (SPEC §3.4.3-5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagramState {
+    /// Not rendered yet; the optional pixel size is the expected one.
+    Pending(Option<(u32, u32)>),
+    /// Rendered; its size comes from [`PictureSizes`].
+    Ready,
+    /// merman's message.
+    Error(String),
+    /// merman's text drawing.
+    Text(String),
+    /// The type has no text drawing.
+    TextUnavailable,
+}
+
+/// Per-diagram state, supplied by whoever renders (diagrams numbered from 0).
+pub trait DiagramStates {
+    fn state(&self, n: usize) -> DiagramState;
+}
+
+/// Diagram states and the text-mode flag of a layout.
+#[derive(Clone, Copy)]
+pub struct Diagrams<'a> {
+    pub states: &'a dyn DiagramStates,
+    pub text_mode: bool,
+}
+
 /// A set of whole rows reserved for one picture.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Slot {
@@ -135,6 +162,18 @@ pub fn layout(doc: &Document, width: u16, cell: (u16, u16)) -> Layout {
     layout_with(doc, width, u16::MAX, cell, &|_: &PictureKey| None)
 }
 
+/// Like [`layout_with`], with per-diagram states and text mode.
+pub fn layout_diagrams(
+    doc: &Document,
+    width: u16,
+    height: u16,
+    cell: (u16, u16),
+    sizes: &dyn PictureSizes,
+    diagrams: Diagrams,
+) -> Layout {
+    run(doc, width, height, cell, sizes, diagrams)
+}
+
 /// Like [`layout`], for a pane `height` rows tall, with picture sizes from `sizes`.
 pub fn layout_with(
     doc: &Document,
@@ -143,7 +182,38 @@ pub fn layout_with(
     cell: (u16, u16),
     sizes: &dyn PictureSizes,
 ) -> Layout {
+    run(
+        doc,
+        width,
+        height,
+        cell,
+        sizes,
+        Diagrams {
+            states: &AllReady,
+            text_mode: false,
+        },
+    )
+}
+
+/// Every diagram rendered: the default of [`layout_with`].
+struct AllReady;
+
+impl DiagramStates for AllReady {
+    fn state(&self, _: usize) -> DiagramState {
+        DiagramState::Ready
+    }
+}
+
+fn run(
+    doc: &Document,
+    width: u16,
+    height: u16,
+    cell: (u16, u16),
+    sizes: &dyn PictureSizes,
+    diagrams: Diagrams,
+) -> Layout {
     let cx = Ctx {
+        diagrams_in: diagrams,
         cell: (cell.0.max(1), cell.1.max(1)),
         height: height.max(1),
         sizes,
@@ -188,6 +258,7 @@ struct Ctx<'a> {
     /// Pane height in rows: the cap of a picture's height.
     height: u16,
     sizes: &'a dyn PictureSizes,
+    diagrams_in: Diagrams<'a>,
     /// Diagrams met so far, for their numbering.
     diagrams: std::cell::Cell<usize>,
     /// Text units handed out so far.
@@ -265,6 +336,127 @@ fn slot_rows(
             block: index,
             spans: Vec::new(),
             slot: (i == 0).then(|| slot.clone()),
+        })
+        .collect()
+}
+
+/// A diagram in its current state. Every variant but a picture slot is made of
+/// ordinary rows; the first row still carries a slot with `known: false`, so the
+/// diagram stays one focusable covering all its rows and nothing is drawn over it.
+fn diagram_rows(n: usize, src: &str, index: usize, content: usize, cx: &Ctx) -> Vec<Row> {
+    let key = PictureKey::Diagram(n);
+    let text_mode = cx.diagrams_in.text_mode;
+    // Text outputs only count in text mode.
+    let state = match cx.diagrams_in.states.state(n) {
+        DiagramState::Text(_) | DiagramState::TextUnavailable if !text_mode => DiagramState::Ready,
+        other => other,
+    };
+    let mut rows = match state {
+        DiagramState::Pending(hint) => placeholder_rows(hint, index, content, cx),
+        DiagramState::Ready => match cx.sizes.natural_size(&key) {
+            Some(size) => return slot_rows(key, Some(size), index, content, cx),
+            None => placeholder_rows(None, index, content, cx),
+        },
+        DiagramState::Error(msg) => {
+            let like = RowSpan {
+                text: String::new(),
+                style: theme::error(),
+                link: None,
+                unit: None,
+            };
+            let mut lines = chunk(&msg, &like, content);
+            cx.tag(&mut lines);
+            let mut rows: Vec<Row> = lines
+                .into_iter()
+                .map(|spans| Row {
+                    kind: RowKind::Text,
+                    block: index,
+                    slot: None,
+                    spans,
+                })
+                .collect();
+            rows.extend(code::framed(
+                Some("mermaid"),
+                src.trim_end_matches('\n'),
+                index,
+                content,
+                &cx.units,
+                theme::error_border(),
+            ));
+            rows
+        }
+        DiagramState::Text(text) => {
+            code::rows(None, text.trim_end_matches('\n'), index, content, &cx.units)
+        }
+        DiagramState::TextUnavailable => {
+            let mut rows = code::rows(
+                Some("mermaid"),
+                src.trim_end_matches('\n'),
+                index,
+                content,
+                &cx.units,
+            );
+            rows.push(Row {
+                kind: RowKind::Text,
+                block: index,
+                slot: None,
+                spans: vec![plain(
+                    "Text rendering not available for this diagram type",
+                    theme::dim(),
+                )],
+            });
+            rows
+        }
+    };
+    for row in &mut rows {
+        clip(row, content);
+    }
+    let cols = content as u16;
+    rows[0].slot = Some(Slot {
+        key,
+        cols,
+        rows: rows.len().min(usize::from(u16::MAX)) as u16,
+        px: (
+            u32::from(cols) * u32::from(cx.cell.0),
+            rows.len() as u32 * u32::from(cx.cell.1),
+        ),
+        left: 0,
+        known: false,
+    });
+    rows
+}
+
+/// "Rendering diagram…" centred in blank rows on the page background; the height
+/// comes from the expected pixel size, scaled like a picture, or is 10 rows.
+fn placeholder_rows(hint: Option<(u32, u32)>, index: usize, content: usize, cx: &Ctx) -> Vec<Row> {
+    let rows = match hint {
+        Some(natural) => {
+            let px = fit(natural, content, cx.height, cx.cell);
+            px.1.div_ceil(u32::from(cx.cell.1)).max(1) as u16
+        }
+        None => PLACEHOLDER_ROWS,
+    };
+    let label = "Rendering diagram…";
+    let middle = usize::from(rows) / 2;
+    (0..usize::from(rows))
+        .map(|i| {
+            let mut spans = Vec::new();
+            let blank = |n: usize| plain(&" ".repeat(n), theme::page());
+            if i == middle {
+                let used = label.chars().count().min(content);
+                let left = (content - used) / 2;
+                spans.push(blank(left));
+                spans.push(plain(label, theme::placeholder()));
+                spans.push(blank(content - used - left));
+            } else {
+                spans.push(blank(content));
+            }
+            Row {
+                kind: RowKind::Text,
+                block: index,
+                slot: None,
+                spans,
+            }
         })
         .collect()
 }
@@ -559,12 +751,10 @@ fn block_rows(block: &Block, index: usize, content: usize, cx: &Ctx) -> Vec<Row>
     };
     match block {
         Block::Paragraph(inlines) => paragraph_rows(inlines, index, content, cx),
-        Block::Diagram(_) => {
+        Block::Diagram(src) => {
             let n = cx.diagrams.get();
             cx.diagrams.set(n + 1);
-            let key = PictureKey::Diagram(n);
-            let size = cx.sizes.natural_size(&key);
-            slot_rows(key, size, index, content, cx)
+            diagram_rows(n, src, index, content, cx)
         }
         Block::Heading { level, content: c } => {
             let mut lines = wrap(pieces(c, theme::heading(*level)), content);
