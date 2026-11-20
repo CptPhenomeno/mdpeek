@@ -46,6 +46,27 @@ pub struct Table {
     pub rows: Vec<Vec<Cell>>,
 }
 
+/// Decode `%XX` escapes (UTF-8); malformed escapes stay as written.
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |b: u8| char::from(b).to_digit(16).map(|d| d as u8);
+        if bytes[i] == b'%'
+            && let (Some(&h), Some(&l)) = (bytes.get(i + 1), bytes.get(i + 2))
+            && let (Some(h), Some(l)) = (hex(h), hex(l))
+        {
+            out.push(h * 16 + l);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// Where an image lives.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImageTarget {
@@ -392,7 +413,7 @@ impl Builder {
         if lower.starts_with("http://") || lower.starts_with("https://") {
             return ImageTarget::Remote(dest.to_owned());
         }
-        let path = PathBuf::from(dest);
+        let path = PathBuf::from(percent_decode(dest));
         match &self.base_dir {
             Some(base) => ImageTarget::Local(base.join(path)),
             None => ImageTarget::Local(path),
@@ -788,6 +809,22 @@ mod tests {
         assert_eq!(
             first_image(&abs).target,
             ImageTarget::Local(PathBuf::from("/abs/a.png"))
+        );
+    }
+
+    #[test]
+    fn image_paths_are_percent_decoded() {
+        let base = Path::new("/docs");
+        let doc =
+            Document::from_bytes_in(b"![p](my%20pic%C3%A9.png)", Source::Markdown, Some(base));
+        assert_eq!(
+            first_image(&doc).target,
+            ImageTarget::Local(PathBuf::from("/docs/my picé.png"))
+        );
+        let bad = Document::from_bytes_in(b"![p](100%.png)", Source::Markdown, None);
+        assert_eq!(
+            first_image(&bad).target,
+            ImageTarget::Local(PathBuf::from("100%.png"))
         );
     }
 

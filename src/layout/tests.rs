@@ -418,3 +418,165 @@ fn no_row_exceeds_the_content_width() {
         }
     }
 }
+
+// --- image slots and fallback rows (SPEC §3.4.1-2, §3.5.2-5) ---
+
+const DIAGRAM: &str = "```mermaid\ngraph TD\n  A-->B\n```";
+
+fn lay_sized(md: &str, width: u16, height: u16, sizes: &dyn PictureSizes) -> Layout {
+    layout_with(
+        &Document::from_bytes(md.as_bytes(), Source::Markdown),
+        width,
+        height,
+        CELL,
+        sizes,
+    )
+}
+
+/// Every image and diagram has the same natural size.
+fn all_sized(w: u32, h: u32) -> impl Fn(&PictureKey) -> Option<(u32, u32)> {
+    move |_: &PictureKey| Some((w, h))
+}
+
+fn slots(l: &Layout) -> Vec<&Slot> {
+    l.rows.iter().filter_map(|r| r.slot.as_ref()).collect()
+}
+
+#[test]
+fn slot_rows_equal_ceil_of_pixel_height_over_cell_height() {
+    for (h, rows) in [(20, 1), (21, 2), (45, 3), (60, 3), (61, 4)] {
+        let l = lay_sized("![a](a.png)", 42, 50, &all_sized(100, h));
+        let s = slots(&l);
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].rows, rows, "height {h}");
+        let picture_rows = l.rows.iter().filter(|r| r.kind == RowKind::Picture).count();
+        assert_eq!(picture_rows, usize::from(rows));
+    }
+}
+
+#[test]
+fn small_diagram_keeps_its_natural_size_and_is_not_stretched() {
+    let l = lay_sized(DIAGRAM, 82, 40, &all_sized(100, 40));
+    let s = slots(&l);
+    assert_eq!(s[0].key, PictureKey::Diagram(0));
+    assert_eq!(s[0].px, (100, 40));
+    assert_eq!((s[0].cols, s[0].rows), (10, 2));
+    assert!(s[0].known);
+}
+
+#[test]
+fn wide_diagram_is_scaled_to_the_content_width_and_capped_at_the_pane_height() {
+    // content 40 cols = 400 px; pane 10 rows = 200 px
+    let l = lay_sized(DIAGRAM, 42, 10, &all_sized(2000, 1000));
+    let s = slots(&l);
+    assert_eq!(s[0].px, (400, 200));
+    assert_eq!((s[0].cols, s[0].rows), (40, 10));
+    // tall and narrow: the height cap wins, the aspect ratio is kept
+    let l = lay_sized(DIAGRAM, 42, 10, &all_sized(400, 1000));
+    let s = slots(&l);
+    assert_eq!(s[0].px, (80, 200));
+    assert_eq!((s[0].cols, s[0].rows), (8, 10));
+}
+
+#[test]
+fn image_slot_never_exceeds_the_natural_size() {
+    let l = lay_sized("![a](a.png)", 42, 50, &all_sized(30, 20));
+    let s = slots(&l);
+    assert_eq!(s[0].px, (30, 20));
+    assert_eq!((s[0].cols, s[0].rows), (3, 1));
+    assert_eq!(s[0].key, PictureKey::Image("a.png".into()));
+}
+
+#[test]
+fn picture_is_centred_horizontally_in_the_content_area() {
+    // content 40 cols; picture 10 cols -> 15 blank columns on each side
+    let l = lay_sized("![a](a.png)", 42, 50, &all_sized(100, 40));
+    assert_eq!(slots(&l)[0].left, 15);
+    let l = lay_sized("![a](a.png)", 42, 50, &all_sized(2000, 40));
+    assert_eq!(slots(&l)[0].left, 0);
+}
+
+#[test]
+fn missing_image_is_one_dimmed_row_with_the_alt_text() {
+    let none = |_: &PictureKey| None;
+    let l = lay_sized("![a cat](img/cat.png)", 60, 50, &none);
+    assert_eq!(texts(&l), ["[image not found: img/cat.png] a cat"]);
+    assert_eq!(l.rows[0].kind, RowKind::ImageNote);
+    assert!(l.rows[0].spans.iter().all(|s| s.style == theme::dim()));
+    let l = lay_sized("![](cat.png)", 60, 50, &none);
+    assert_eq!(texts(&l), ["[image not found: cat.png]"]);
+}
+
+#[test]
+fn remote_image_is_one_dimmed_row_with_the_alt_text_and_no_size_query() {
+    let panics = |_: &PictureKey| -> Option<(u32, u32)> { panic!("remote images are never sized") };
+    let l = lay_sized("![logo](https://example.com/a.png)", 60, 50, &panics);
+    assert_eq!(
+        texts(&l),
+        ["[remote image: https://example.com/a.png] logo"]
+    );
+    assert_eq!(l.rows[0].kind, RowKind::ImageNote);
+    assert!(l.rows[0].spans.iter().all(|s| s.style == theme::dim()));
+}
+
+#[test]
+fn no_text_row_overlaps_a_slot() {
+    let l = lay_sized(
+        "before ![a](a.png) after\n\nnext",
+        42,
+        50,
+        &all_sized(100, 60),
+    );
+    assert_eq!(texts(&l), ["before", "", "", "", "after", "", "next"]);
+    let kinds: Vec<RowKind> = l.rows.iter().map(|r| r.kind).collect();
+    assert_eq!(
+        kinds[..5],
+        [
+            RowKind::Text,
+            RowKind::Picture,
+            RowKind::Picture,
+            RowKind::Picture,
+            RowKind::Text
+        ]
+    );
+    assert!(l.rows[1].slot.is_some());
+    assert!(l.rows[2].slot.is_none() && l.rows[3].slot.is_none());
+    for r in l.rows.iter().filter(|r| r.kind == RowKind::Picture) {
+        assert!(r.spans.is_empty());
+    }
+}
+
+#[test]
+fn diagram_of_unknown_size_reserves_a_ten_row_placeholder() {
+    let none = |_: &PictureKey| None;
+    let l = lay_sized(DIAGRAM, 42, 50, &none);
+    let s = slots(&l);
+    assert_eq!(s[0].rows, 10);
+    assert!(!s[0].known);
+    assert_eq!(l.rows.len(), 10);
+}
+
+#[test]
+fn diagrams_are_numbered_in_document_order_including_nested_ones() {
+    let md = format!("{DIAGRAM}\n\n- item\n\n  ```mermaid\n  graph\n  ```\n\n> text");
+    let l = lay_sized(&md, 42, 50, &all_sized(100, 20));
+    let keys: Vec<&PictureKey> = slots(&l).into_iter().map(|s| &s.key).collect();
+    assert_eq!(keys, [&PictureKey::Diagram(0), &PictureKey::Diagram(1)]);
+}
+
+#[test]
+fn pictures_in_lists_and_quotes_keep_the_width_invariant_and_shift_right() {
+    let md = "- ![a](a.png)\n\n> ![b](b.png)\n\n- text ![c](c.png)";
+    for width in [20u16, 30, 42] {
+        let l = lay_sized(md, width, 50, &all_sized(5000, 40));
+        let s = slots(&l);
+        assert_eq!(s.len(), 3);
+        for slot in s {
+            assert!(slot.left + slot.cols <= width - 2 * MARGIN, "{slot:?}");
+            assert!(slot.left >= 2);
+        }
+        for r in &l.rows {
+            assert!(r.text().width() <= usize::from(width - 2 * MARGIN));
+        }
+    }
+}
