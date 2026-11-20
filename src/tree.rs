@@ -1,7 +1,12 @@
 //! Folder scan into a filtered, sorted tree (SPEC §3.7.1-2). No terminal dependency.
 
+use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
+
+use ignore::WalkBuilder;
+
+use crate::cli::has_supported_extension;
 
 /// One entry of the scanned tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,9 +36,72 @@ impl Node {
 }
 
 /// Scan `root` and return its top-level entries, directories first, each group
-/// sorted case-insensitively.
-pub fn scan(_root: &Path) -> io::Result<Vec<Node>> {
-    Ok(Vec::new())
+/// sorted case-insensitively. Hidden entries and `.gitignore` matches are
+/// skipped, with or without a git repository around `root`.
+pub fn scan(root: &Path) -> io::Result<Vec<Node>> {
+    let walker = WalkBuilder::new(root)
+        .hidden(true)
+        .require_git(false)
+        .git_global(false)
+        .git_exclude(false)
+        .ignore(false)
+        .parents(true)
+        .follow_links(false)
+        .build();
+    let mut files = Vec::new();
+    for entry in walker {
+        let entry = entry.map_err(io::Error::other)?;
+        if entry.file_type().is_some_and(|t| t.is_file()) && has_supported_extension(entry.path()) {
+            files.push(entry.into_path());
+        }
+    }
+    let mut top = Vec::new();
+    for file in files {
+        if let Ok(rel) = file.strip_prefix(root) {
+            let parts: Vec<_> = rel.components().map(|c| c.as_os_str()).collect();
+            insert(&mut top, root, &parts, &file);
+        }
+    }
+    sort(&mut top);
+    Ok(top)
+}
+
+fn insert(level: &mut Vec<Node>, dir: &Path, parts: &[&OsStr], file: &Path) {
+    let Some((first, rest)) = parts.split_first() else {
+        return;
+    };
+    let name = first.to_string_lossy().into_owned();
+    if rest.is_empty() {
+        level.push(Node::File {
+            name,
+            path: file.to_path_buf(),
+        });
+        return;
+    }
+    let path = dir.join(first);
+    let existing = level
+        .iter()
+        .position(|n| matches!(n, Node::Dir { path: p, .. } if *p == path));
+    let idx = existing.unwrap_or_else(|| {
+        level.push(Node::Dir {
+            name,
+            path: path.clone(),
+            children: Vec::new(),
+        });
+        level.len() - 1
+    });
+    if let Node::Dir { children, .. } = &mut level[idx] {
+        insert(children, &path, rest, file);
+    }
+}
+
+fn sort(nodes: &mut [Node]) {
+    nodes.sort_by_cached_key(|n| (matches!(n, Node::File { .. }), n.name().to_lowercase()));
+    for n in nodes {
+        if let Node::Dir { children, .. } = n {
+            sort(children);
+        }
+    }
 }
 
 #[cfg(test)]
