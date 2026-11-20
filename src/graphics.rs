@@ -4,7 +4,7 @@
 //! ratatui `Buffer` so that every protocol is checked the same way.
 
 use crate::layout::{PictureKey, PictureSizes, Slot};
-use image::{DynamicImage, Rgba, RgbaImage};
+use image::{DynamicImage, Rgba, RgbaImage, imageops::FilterType};
 use ratatui::{
     buffer::Buffer,
     layout::{Rect, Size},
@@ -15,6 +15,7 @@ use ratatui_image::{
     picker::Picker,
     sliced::{SignedPosition, SlicedImage, SlicedProtocol},
 };
+use std::collections::HashMap;
 
 /// The part of an image slot that intersects the document pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -232,30 +233,112 @@ impl PictureRenderer for SlicedRenderer {
     }
 }
 
-/// Where encoded pictures live, keyed by [`PictureKey`] (stub).
-pub struct PictureSet;
+/// How pictures are turned into renderers.
+enum Backend {
+    /// Marker symbol per visible cell; no pixels (snapshot tests).
+    Placeholder(char),
+    /// Real terminal graphics through `ratatui-image`.
+    Sliced { picker: Picker, bg: Rgba<u8> },
+}
+
+/// A decoded picture and its encoding for the current slot size.
+struct Entry {
+    img: DynamicImage,
+    encoded: Option<((u32, u32), Box<dyn PictureRenderer>)>,
+}
+
+/// Decoded pictures keyed by [`PictureKey`]. Each is encoded once per slot
+/// size (lazily, on first draw) and then only sliced per frame, so scrolling
+/// never re-encodes. Pictures arrive through [`PictureSet::insert`] already
+/// decoded (the raster and worker stages feed it).
+pub struct PictureSet {
+    backend: Backend,
+    items: HashMap<PictureKey, Entry>,
+    encodes: usize,
+}
+
+impl std::fmt::Debug for PictureSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PictureSet")
+            .field("pictures", &self.items.len())
+            .field("encodes", &self.encodes)
+            .finish()
+    }
+}
 
 impl PictureSet {
-    pub fn placeholder(_symbol: char) -> Self {
-        Self
+    fn with(backend: Backend) -> Self {
+        Self {
+            backend,
+            items: HashMap::new(),
+            encodes: 0,
+        }
     }
 
-    pub fn sliced(_picker: Picker, _bg: Rgba<u8>) -> Self {
-        Self
+    /// Draws `symbol` over the visible cells of each picture.
+    pub fn placeholder(symbol: char) -> Self {
+        Self::with(Backend::Placeholder(symbol))
     }
 
-    pub fn insert(&mut self, _key: PictureKey, _img: DynamicImage) {}
+    /// Draws real graphics with the protocol of `picker`; transparent pixels
+    /// are composited over `bg` (SPEC §4.2).
+    pub fn sliced(picker: Picker, bg: Rgba<u8>) -> Self {
+        Self::with(Backend::Sliced { picker, bg })
+    }
 
+    /// Adds or replaces the picture of `key`; its encoding is dropped.
+    pub fn insert(&mut self, key: PictureKey, img: DynamicImage) {
+        self.items.insert(key, Entry { img, encoded: None });
+    }
+
+    /// Forgets the picture of `key`.
+    pub fn remove(&mut self, key: &PictureKey) {
+        self.items.remove(key);
+    }
+
+    /// How many encodes happened so far (a test and diagnostics hook).
     pub fn encode_count(&self) -> usize {
-        0
+        self.encodes
     }
 
-    pub fn draw(&mut self, _slot: &Slot, _request: &PictureRequest<'_>, _buf: &mut Buffer) {}
+    /// Draws the picture of `slot` as `request` describes, clipped to the pane.
+    /// Does nothing for a picture that was not inserted or cannot be encoded.
+    pub fn draw(&mut self, slot: &Slot, request: &PictureRequest<'_>, buf: &mut Buffer) {
+        let Some(entry) = self.items.get_mut(&slot.key) else {
+            return;
+        };
+        if entry.encoded.as_ref().is_none_or(|(px, _)| *px != slot.px) {
+            let renderer: Option<Box<dyn PictureRenderer>> = match &self.backend {
+                Backend::Placeholder(symbol) => {
+                    Some(Box::new(PlaceholderRenderer { symbol: *symbol }))
+                }
+                Backend::Sliced { picker, bg } => {
+                    let img = if (entry.img.width(), entry.img.height()) == slot.px {
+                        entry.img.clone()
+                    } else {
+                        entry.img.resize_exact(
+                            slot.px.0.max(1),
+                            slot.px.1.max(1),
+                            FilterType::Triangle,
+                        )
+                    };
+                    SlicedRenderer::new(picker, img, *bg)
+                        .ok()
+                        .map(|r| Box::new(r) as Box<dyn PictureRenderer>)
+                }
+            };
+            self.encodes += 1;
+            entry.encoded = renderer.map(|r| (slot.px, r));
+        }
+        if let Some((_, renderer)) = entry.encoded.as_mut() {
+            renderer.render(request, buf);
+        }
+    }
 }
 
 impl PictureSizes for PictureSet {
-    fn natural_size(&self, _key: &PictureKey) -> Option<(u32, u32)> {
-        None
+    fn natural_size(&self, key: &PictureKey) -> Option<(u32, u32)> {
+        self.items.get(key).map(|e| (e.img.width(), e.img.height()))
     }
 }
 

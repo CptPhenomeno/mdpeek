@@ -409,3 +409,13 @@ fn a_picture_scrolled_out_of_view_is_cleared() {
     terminal.draw(|f| app.render(f)).unwrap();
     assert!(hashes(terminal.backend().buffer()).is_empty());
 }
+
+#[test]
+fn snapshot_of_a_picture_scrolled_half_out_of_the_top_with_the_placeholder_renderer() {
+    let mut app = pic_app(30, 8 + CHROME);
+    let (idx, _) = slot_at(&app);
+    app.scroll = idx + 2;
+    let mut terminal = Terminal::new(TestBackend::new(30, 8 + CHROME)).unwrap();
+    terminal.draw(|f| app.render(f)).unwrap();
+    insta::assert_snapshot!(terminal.backend());
+}
