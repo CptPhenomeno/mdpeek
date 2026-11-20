@@ -49,6 +49,12 @@ impl JobSink for WorkerSink {
     }
 }
 
+/// Monotonic time source of the resize debounce; tests drive their own.
+pub trait Clock: std::fmt::Debug {
+    /// Time elapsed since an arbitrary fixed origin.
+    fn now(&self) -> std::time::Duration;
+}
+
 /// A raster that arrived and must be handed to the picture set.
 pub struct Arrived {
     pub key: PictureKey,

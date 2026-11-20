@@ -18,7 +18,7 @@ use crate::theme;
 #[cfg(test)]
 mod tests;
 
-use super::pictures::{JobSink, Pictures};
+use super::pictures::{Clock, JobSink, Pictures};
 
 /// Cell size in pixels until the terminal is queried.
 const CELL: (u16, u16) = (10, 20);
@@ -174,6 +174,17 @@ impl App {
             );
         }
         self.relayout_keeping_position();
+    }
+
+    /// Replaces the clock the resize debounce reads (tests).
+    pub fn set_clock(&mut self, _clock: Box<dyn Clock>) {}
+
+    /// Submits re-rasterisation once the debounce has elapsed.
+    pub fn tick(&mut self) {}
+
+    /// How long until the debounce is due, when one is pending.
+    pub fn next_wakeup(&self) -> Option<std::time::Duration> {
+        None
     }
 
     /// Whether render jobs are still outstanding.
