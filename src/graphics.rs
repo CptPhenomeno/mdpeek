@@ -416,6 +416,7 @@ impl PictureSizes for PictureSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine;
 
     fn pane() -> Rect {
         Rect::new(20, 1, 60, 10)
@@ -584,6 +585,44 @@ mod tests {
         let mut set = PictureSet::sliced(Picker::halfblocks(), BG, 2);
         set.insert(PictureKey::Diagram(0), red(80, 40));
         assert_eq!(set.natural_size(&PictureKey::Diagram(0)), Some((40, 20)));
+    }
+
+    #[test]
+    fn an_iterm2_picture_is_encoded_at_cell_box_pixels_one_slice_per_row() {
+        use crate::graphics::detect::Selection;
+        let sel = Selection {
+            protocol: ProtocolType::Iterm2,
+            cell: (10, 20),
+            detected: false,
+        };
+        // 3x2 cells of 10x20 px: the slot is 30x40 px.
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40"><rect width="30" height="40" fill="#f00"/></svg>"##;
+        let raster = crate::raster::rasterise(svg, 30, 40, sel.density()).unwrap();
+        #[allow(deprecated)]
+        let mut picker = Picker::from_fontsize(ratatui_image::FontSize::new(10, 20));
+        picker.set_protocol_type(sel.protocol);
+        let mut set = PictureSet::sliced(picker, BG, sel.density());
+        set.insert(PictureKey::Diagram(0), DynamicImage::ImageRgba8(raster));
+        let mut buf = Buffer::empty(Rect::new(0, 0, 80, 12));
+        let request = PictureRequest {
+            pane: pane(),
+            slot_top: 3,
+            slot_left: 30,
+            slot_cols: 3,
+            slot_rows: 2,
+            overlays: &[],
+        };
+        set.draw(&cell_slot((30, 40), 3, 2), &request, &mut buf);
+        for y in [3u16, 4] {
+            let seq = buf.cell((30, y)).unwrap().symbol().to_string();
+            let start = seq.find(':').unwrap() + 1;
+            let end = seq.find('\x07').unwrap();
+            let png = base64::engine::general_purpose::STANDARD
+                .decode(&seq[start..end])
+                .unwrap();
+            let img = image::load_from_memory(&png).unwrap();
+            assert_eq!((img.width(), img.height()), (30, 20), "row {y}");
+        }
     }
 
     #[test]
