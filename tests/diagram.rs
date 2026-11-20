@@ -104,8 +104,22 @@ fn site_config_sets_the_base_theme_with_variables_from_the_readmd_theme() {
     let cfg = site_config();
     assert_eq!(cfg["theme"], "base");
     let v = &cfg["themeVariables"];
-    assert_eq!(v["primaryColor"], hex(LINK));
-    assert_eq!(v["primaryBorderColor"], hex(ACCENT));
+    assert_ne!(
+        v["primaryColor"],
+        hex(LINK),
+        "primary fill must be a pastel"
+    );
+    assert_ne!(v["primaryBorderColor"], hex(ACCENT));
+    assert_ne!(
+        v["lineColor"],
+        hex(ACCENT),
+        "lines are soft, not strong cyan"
+    );
+    assert_ne!(
+        v["edgeLabelBackground"],
+        hex(readmd::theme::EMPHASIS),
+        "edge label background must be a pastel"
+    );
     assert_eq!(v["textColor"], hex(FG));
     for key in [
         "secondaryColor",

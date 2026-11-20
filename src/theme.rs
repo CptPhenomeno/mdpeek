@@ -44,6 +44,17 @@ pub fn hex(c: Color) -> String {
     }
 }
 
+/// Linear blend of two RGB colours: `t` of `b` over the rest of `a` (0.0 = `a`, 1.0 = `b`).
+pub fn mix(a: Color, b: Color, t: f32) -> Color {
+    match (a, b) {
+        (Color::Rgb(ar, ag, ab), Color::Rgb(br, bg, bb)) => {
+            let m = |x: u8, y: u8| (f32::from(x) * (1.0 - t) + f32::from(y) * t).round() as u8;
+            Color::Rgb(m(ar, br), m(ag, bg), m(ab, bb))
+        }
+        _ => a,
+    }
+}
+
 /// Heading colour of a level (1 to 6) as a plain colour.
 fn heading_colour(level: u8) -> Color {
     heading(level).fg.unwrap_or(FG)
@@ -252,6 +263,33 @@ mod diagram_palette_tests {
             }
         };
         0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    }
+
+    fn saturation(c: Color) -> f64 {
+        let Color::Rgb(r, g, b) = c else {
+            panic!("not RGB")
+        };
+        let (mx, mn) = (r.max(g).max(b), r.min(g).min(b));
+        f64::from(mx - mn) / f64::from(mx)
+    }
+
+    #[test]
+    fn mix_blends_linearly() {
+        let (a, b) = (Color::Rgb(0, 100, 200), Color::Rgb(100, 200, 0));
+        assert_eq!(mix(a, b, 0.0), a);
+        assert_eq!(mix(a, b, 1.0), b);
+        assert_eq!(mix(a, b, 0.5), Color::Rgb(50, 150, 100));
+    }
+
+    #[test]
+    fn diagram_fills_are_soft_pastels() {
+        for c in diagram_scale() {
+            assert!(
+                saturation(c) <= 0.45,
+                "{c:?} too saturated: {:.2}",
+                saturation(c)
+            );
+        }
     }
 
     #[test]
