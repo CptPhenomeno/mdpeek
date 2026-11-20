@@ -786,4 +786,113 @@ mod pictures {
         terminal.draw(|f| app.render(f)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
+
+    // ---- diagram text mode (KB-30) ----
+
+    fn jobs_of(jobs: &Jobs, mode: Mode) -> usize {
+        jobs.lock()
+            .unwrap()
+            .iter()
+            .filter(|j| j.mode == mode)
+            .count()
+    }
+
+    fn deliver_text(app: &mut App, jobs: &Jobs, n: usize, outcome: Outcome) {
+        let job = last_job(jobs, &PictureKey::Diagram(n), Mode::Text);
+        app.on_result(result_of(&job, outcome));
+    }
+
+    const FLOW: &str = "```mermaid\ngraph TD\n A-->B\n```\n";
+
+    #[test]
+    fn f8_toggles_diagram_text_mode_and_recomputes_the_layout() {
+        let md = format!("{FLOW}\n{}", many(30));
+        let (mut app, jobs) = pic_doc_app(&md, 40, 12 + CHROME);
+        deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), (100, 40));
+        let picture_rows = app.row_count();
+        app.scroll_by(6);
+        let anchor = app.top_anchor();
+        let renders_before = jobs_of(&jobs, Mode::Render);
+
+        press(&mut app, KeyCode::F(8));
+        assert_eq!(jobs_of(&jobs, Mode::Text), 1);
+        assert_ne!(app.row_count(), picture_rows, "placeholder is taller");
+        assert!(screen_text(&mut app, 40, 12 + CHROME).contains("Rendering diagram"));
+        deliver_text(
+            &mut app,
+            &jobs,
+            0,
+            Outcome::Text("┌───┐\n│ A │\n└───┘".into()),
+        );
+
+        press(&mut app, KeyCode::F(8));
+        assert_eq!(app.row_count(), picture_rows);
+        assert_eq!(app.top_anchor(), anchor);
+        assert_eq!(
+            jobs_of(&jobs, Mode::Render),
+            renders_before,
+            "cached picture reused"
+        );
+    }
+
+    #[test]
+    fn text_drawings_and_the_unavailable_note_replace_the_picture_in_text_mode() {
+        let md = format!("{FLOW}\n```mermaid\npie\n \"a\": 1\n```\n");
+        let (mut app, jobs) = pic_doc_app(&md, 40, 30 + CHROME);
+        press(&mut app, KeyCode::F(8));
+        deliver_text(
+            &mut app,
+            &jobs,
+            0,
+            Outcome::Text("┌───┐\n│ A │\n└───┘".into()),
+        );
+        deliver_text(&mut app, &jobs, 1, Outcome::TextUnavailable);
+        let text = screen_text(&mut app, 40, 30 + CHROME);
+        assert!(text.contains("│ A │"), "{text}");
+        assert!(
+            text.contains("Text rendering not available for this diagram type"),
+            "{text}"
+        );
+        assert!(text.contains("pie"), "{text}");
+    }
+
+    #[test]
+    fn text_diagrams_option_starts_with_text_mode_on() {
+        let jobs = Jobs::default();
+        let mut app = App::new(doc(FLOW), "a.md".into());
+        app.set_text_mode(true);
+        app.set_job_sink(Box::new(FakeSink(jobs.clone())));
+        app.resize(40, 12 + CHROME);
+        assert_eq!(jobs_of(&jobs, Mode::Text), 1);
+        assert!(renders(&jobs).is_empty(), "no picture render in text mode");
+    }
+
+    #[test]
+    fn status_bar_shows_the_text_diagrams_mode_while_it_is_on() {
+        let (mut app, _jobs) = pic_doc_app(FLOW, 60, 12 + CHROME);
+        let off = screen(&mut app, 60, 12 + CHROME);
+        assert!(!off.last().unwrap().contains("Text diagrams"));
+        press(&mut app, KeyCode::F(8));
+        let on = screen(&mut app, 60, 12 + CHROME);
+        assert!(on.last().unwrap().contains("Text diagrams"), "{on:?}");
+        press(&mut app, KeyCode::F(8));
+        let off = screen(&mut app, 60, 12 + CHROME);
+        assert!(!off.last().unwrap().contains("Text diagrams"));
+    }
+
+    #[test]
+    fn snapshot_of_a_document_with_a_diagram_in_text_mode() {
+        let md = format!("before\n\n{FLOW}\nafter\n");
+        let (mut app, jobs) = pic_doc_app(&md, 40, 14 + CHROME);
+        press(&mut app, KeyCode::F(8));
+        deliver_text(
+            &mut app,
+            &jobs,
+            0,
+            Outcome::Text("┌───┐\n│ A │\n└─┬─┘\n┌─▼─┐\n│ B │\n└───┘".into()),
+        );
+        let mut terminal = Terminal::new(TestBackend::new(40, 14 + CHROME)).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+        insta::assert_snapshot!(terminal.backend());
+    }
 }

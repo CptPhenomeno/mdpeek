@@ -11,6 +11,7 @@ pub enum Action {
     PageDown,
     Top,
     Bottom,
+    ToggleTextDiagrams,
     Quit,
 }
 
@@ -101,6 +102,13 @@ pub const BINDINGS: &[Binding] = &[
         Action::Quit,
         "Ctrl+Q",
         "Quit",
+    ),
+    bind(
+        KeyCode::F(8),
+        NONE,
+        Action::ToggleTextDiagrams,
+        "F8",
+        "Toggle text diagrams",
     ),
     bind(KeyCode::F(10), NONE, Action::Quit, "F10", "Quit"),
 ];

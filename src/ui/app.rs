@@ -246,6 +246,9 @@ impl App {
         self.request_pictures();
     }
 
+    /// Starts (or leaves) diagram text mode, as `--text-diagrams` asks.
+    pub fn set_text_mode(&mut self, _on: bool) {}
+
     pub fn should_quit(&self) -> bool {
         self.quit
     }
@@ -265,6 +268,7 @@ impl App {
             Action::PageDown => self.scroll_by(self.page()),
             Action::Top => self.scroll = 0,
             Action::Bottom => self.scroll = self.max_scroll(),
+            Action::ToggleTextDiagrams => {}
             Action::Quit => self.quit = true,
         }
         self.request_pictures();
