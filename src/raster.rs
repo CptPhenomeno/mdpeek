@@ -6,6 +6,8 @@
 //! `graphics::flatten_over`, at encode time (SPEC §4.2), so it is not done here.
 
 use image::RgbaImage;
+use resvg::{tiny_skia, usvg};
+use std::sync::{Arc, OnceLock};
 
 /// Why an SVG could not be rasterised.
 #[derive(Debug)]
@@ -27,14 +29,65 @@ impl std::fmt::Display for RasterError {
 
 impl std::error::Error for RasterError {}
 
+/// Shared font database. Loading system fonts takes about 20 ms (SPEC spike
+/// KB-6), so it happens once, on the first parse, and never on the first-paint
+/// path: callers run this module from the raster worker.
+fn fontdb() -> Arc<usvg::fontdb::Database> {
+    static DB: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
+    DB.get_or_init(|| {
+        let mut db = usvg::fontdb::Database::new();
+        db.load_system_fonts();
+        Arc::new(db)
+    })
+    .clone()
+}
+
+fn parse(svg: &str) -> Result<usvg::Tree, RasterError> {
+    let opt = usvg::Options {
+        fontdb: fontdb(),
+        ..Default::default()
+    };
+    usvg::Tree::from_str(svg, &opt).map_err(|e| RasterError::Invalid(e.to_string()))
+}
+
 /// Intrinsic size of an SVG in pixels, parsed without rasterising.
-pub fn intrinsic_size(_svg: &str) -> Result<(f32, f32), RasterError> {
-    unimplemented!()
+pub fn intrinsic_size(svg: &str) -> Result<(f32, f32), RasterError> {
+    let size = parse(svg)?.size();
+    Ok((size.width(), size.height()))
 }
 
 /// Rasterise at natural size, scaled down (aspect kept) to fit `max_w` x `max_h`.
-pub fn rasterise(_svg: &str, _max_w: u32, _max_h: u32) -> Result<RgbaImage, RasterError> {
-    unimplemented!()
+///
+/// Never scales up. When a limit binds, that dimension equals the limit exactly.
+/// The result keeps transparency.
+pub fn rasterise(svg: &str, max_w: u32, max_h: u32) -> Result<RgbaImage, RasterError> {
+    let tree = parse(svg)?;
+    let (w, h) = (tree.size().width(), tree.size().height());
+    if !(w > 0.0 && h > 0.0) || max_w == 0 || max_h == 0 {
+        return Err(RasterError::Size);
+    }
+    let (mw, mh) = (max_w as f32, max_h as f32);
+    let (pw, ph) = if w <= mw && h <= mh {
+        (w.ceil() as u32, h.ceil() as u32)
+    } else if mw / w <= mh / h {
+        (max_w, ((h * mw / w).round() as u32).clamp(1, max_h))
+    } else {
+        (((w * mh / h).round() as u32).clamp(1, max_w), max_h)
+    };
+    let mut pm = tiny_skia::Pixmap::new(pw, ph).ok_or(RasterError::Size)?;
+    let transform = tiny_skia::Transform::from_scale(pw as f32 / w, ph as f32 / h);
+    resvg::render(&tree, transform, &mut pm.as_mut());
+    // tiny-skia pixels are premultiplied; the image crate expects straight alpha.
+    let mut data = pm.take();
+    for px in data.as_chunks_mut::<4>().0 {
+        let a = px[3] as u32;
+        if a != 0 && a != 255 {
+            for c in &mut px[..3] {
+                *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
+    }
+    RgbaImage::from_raw(pw, ph, data).ok_or(RasterError::Size)
 }
 
 #[cfg(test)]
