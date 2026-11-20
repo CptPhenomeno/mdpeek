@@ -203,6 +203,11 @@ impl Pictures {
         self.sink = Some(sink);
     }
 
+    /// Source of the `n`-th diagram of the document.
+    pub fn diagram_source(&self, n: usize) -> Option<&str> {
+        self.diagram_sources.get(n).map(String::as_str)
+    }
+
     pub fn has_outstanding(&self) -> bool {
         !self.inflight.is_empty()
     }

@@ -17,11 +17,30 @@ pub enum Action {
     ClearFocus,
     Activate,
     Quit,
+    // Full-screen view (SPEC §3.6.3).
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
+    PanLeft,
+    PanRight,
+    PanUp,
+    PanDown,
+    CloseFullscreen,
+}
+
+/// Where a binding applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Context {
+    /// The document pane.
+    Document,
+    /// The full-screen diagram view.
+    Fullscreen,
 }
 
 /// One row of the key map.
 #[derive(Debug, Clone, Copy)]
 pub struct Binding {
+    pub context: Context,
     pub code: KeyCode,
     pub modifiers: KeyModifiers,
     pub action: Action,
@@ -41,8 +60,25 @@ const fn bind(
     description: &'static str,
 ) -> Binding {
     Binding {
+        context: Context::Document,
         code,
         modifiers,
+        action,
+        label,
+        description,
+    }
+}
+
+const fn view(
+    code: KeyCode,
+    action: Action,
+    label: &'static str,
+    description: &'static str,
+) -> Binding {
+    Binding {
+        context: Context::Fullscreen,
+        code,
+        modifiers: NONE,
         action,
         label,
         description,
@@ -143,12 +179,48 @@ pub const BINDINGS: &[Binding] = &[
         "Toggle text diagrams",
     ),
     bind(KeyCode::F(10), NONE, Action::Quit, "F10", "Quit"),
+    view(KeyCode::Char('+'), Action::ZoomIn, "+", "Zoom in"),
+    view(KeyCode::Char('='), Action::ZoomIn, "=", "Zoom in"),
+    view(KeyCode::Char('-'), Action::ZoomOut, "-", "Zoom out"),
+    view(KeyCode::Char('0'), Action::ZoomReset, "0", "Reset to fit"),
+    view(KeyCode::Home, Action::ZoomReset, "Home", "Reset to fit"),
+    view(KeyCode::Left, Action::PanLeft, "Left", "Pan left"),
+    view(KeyCode::Right, Action::PanRight, "Right", "Pan right"),
+    view(
+        KeyCode::Up,
+        Action::PanUp,
+        "Up",
+        "Pan up, or scroll the text",
+    ),
+    view(
+        KeyCode::Down,
+        Action::PanDown,
+        "Down",
+        "Pan down, or scroll the text",
+    ),
+    view(
+        KeyCode::Esc,
+        Action::CloseFullscreen,
+        "Esc",
+        "Back to the document",
+    ),
+    view(
+        KeyCode::Char('q'),
+        Action::CloseFullscreen,
+        "q",
+        "Back to the document",
+    ),
 ];
 
-/// Action bound to `key`, if any.
+/// Action bound to `key` in the document, if any.
 pub fn action_for(key: KeyEvent) -> Option<Action> {
+    action_in(Context::Document, key)
+}
+
+/// Action bound to `key` in `context`, if any.
+pub fn action_in(context: Context, key: KeyEvent) -> Option<Action> {
     BINDINGS
         .iter()
-        .find(|b| b.code == key.code && b.modifiers == key.modifiers)
+        .find(|b| b.context == context && b.code == key.code && b.modifiers == key.modifiers)
         .map(|b| b.action)
 }
