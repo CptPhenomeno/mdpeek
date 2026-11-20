@@ -18,6 +18,8 @@ use crate::theme;
 #[cfg(test)]
 mod tests;
 
+use super::pictures::JobSink;
+
 /// Cell size in pixels until the terminal is queried.
 const CELL: (u16, u16) = (10, 20);
 /// Rows a mouse wheel notch scrolls (SPEC §3.8).
@@ -133,6 +135,17 @@ impl App {
     pub fn add_picture(&mut self, key: PictureKey, img: image::DynamicImage) {
         self.pictures.insert(key, img);
         self.relayout_keeping_position();
+    }
+
+    /// Where render jobs go (the background worker).
+    pub fn set_job_sink(&mut self, _sink: Box<dyn JobSink>) {}
+
+    /// A render job finished.
+    pub fn on_result(&mut self, _result: crate::render_worker::RenderResult) {}
+
+    /// Whether render jobs are still outstanding.
+    pub fn has_outstanding(&self) -> bool {
+        false
     }
 
     /// Rectangles of open overlays; pictures never draw under them.

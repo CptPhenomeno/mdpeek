@@ -3,9 +3,11 @@
 pub mod app;
 pub mod keymap;
 pub mod overlay;
+pub mod pictures;
 pub mod terminal;
 
 pub use app::App;
+pub use pictures::JobSink;
 
 use std::io;
 
