@@ -36,6 +36,16 @@ pub const EMPHASIS: Color = Color::Rgb(249, 226, 175);
 /// Background of inline code.
 pub const CODE_BG: Color = Color::Rgb(49, 50, 68);
 
+/// `#rrggbb` form of an RGB colour, for Mermaid theme variables.
+pub fn hex(_c: Color) -> String {
+    String::new()
+}
+
+/// Every (fill, text) pair the diagram palette paints text over.
+pub fn diagram_fill_pairs() -> Vec<(Color, Color)> {
+    Vec::new()
+}
+
 /// Page style: explicit background and body foreground.
 pub fn page() -> Style {
     Style::new().fg(FG).bg(BG)
@@ -197,5 +207,42 @@ mod error_colour_tests {
             "{}",
             contrast(ERROR, CODE_BG)
         );
+    }
+}
+
+#[cfg(test)]
+mod diagram_palette_tests {
+    use super::*;
+
+    fn lum(c: Color) -> f64 {
+        let Color::Rgb(r, g, b) = c else {
+            panic!("not RGB")
+        };
+        let lin = |v: u8| {
+            let v = f64::from(v) / 255.0;
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    }
+
+    #[test]
+    fn hex_formats_rgb_as_lowercase_rrggbb() {
+        assert_eq!(hex(Color::Rgb(26, 27, 38)), "#1a1b26");
+        assert_eq!(hex(Color::Rgb(255, 255, 255)), "#ffffff");
+    }
+
+    #[test]
+    fn every_diagram_fill_and_text_pair_has_contrast_of_at_least_4_5() {
+        let pairs = diagram_fill_pairs();
+        assert!(pairs.len() >= 12, "palette too small: {}", pairs.len());
+        for (fill, text) in pairs {
+            let (a, b) = (lum(fill), lum(text));
+            let ratio = (a.max(b) + 0.05) / (a.min(b) + 0.05);
+            assert!(ratio >= 4.5, "{fill:?} on {text:?}: {ratio:.2}");
+        }
     }
 }

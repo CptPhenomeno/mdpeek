@@ -95,3 +95,71 @@ fn source_hash_is_stable_for_identical_sources_and_differs_for_different_ones() 
     // Pinned value: stable across runs and releases (FNV-1a 64).
     assert_eq!(source_hash(""), 0xcbf2_9ce4_8422_2325);
 }
+
+#[test]
+fn site_config_sets_the_base_theme_with_variables_from_the_readmd_theme() {
+    use readmd::diagram::site_config;
+    use readmd::theme::{ACCENT, FG, LINK, hex};
+    let cfg = site_config();
+    assert_eq!(cfg["theme"], "base");
+    let v = &cfg["themeVariables"];
+    assert_eq!(v["primaryColor"], hex(LINK));
+    assert_eq!(v["primaryBorderColor"], hex(ACCENT));
+    assert_eq!(v["textColor"], hex(FG));
+    for key in [
+        "secondaryColor",
+        "tertiaryColor",
+        "lineColor",
+        "edgeLabelBackground",
+        "noteBkgColor",
+        "actorBkg",
+        "cScale0",
+        "cScale11",
+        "pie1",
+        "pie12",
+    ] {
+        let s = v[key].as_str().unwrap_or_default();
+        assert!(
+            s.len() == 7 && s.starts_with('#'),
+            "{key} missing or not #rrggbb: {s:?}"
+        );
+    }
+}
+
+#[test]
+fn edge_label_backgrounds_are_opaque_in_the_svg() {
+    let Rendered::Svg(svg) = render_svg("flowchart LR\n    A -->|yes| B\n") else {
+        panic!("no svg");
+    };
+    let bg = readmd::theme::hex(readmd::theme::CODE_BG);
+    assert!(svg.contains(&bg), "edge label background {bg} not in SVG");
+    assert!(!svg.contains("rgba("), "translucent colour in SVG");
+    assert!(!svg.contains("fill-opacity"), "fill-opacity in SVG");
+}
+
+const SAMPLES: [&str; 7] = [
+    "flowchart TD\n    A[Open] --> B{Has?}\n    B -- yes --> C[Render]\n    B -- no --> D[Plain]\n",
+    "sequenceDiagram\n    participant U as User\n    participant R as readmd\n    U->>R: open\n    Note over U,R: note\n",
+    "classDiagram\n    class Document {\n        +Vec~Block~ blocks\n    }\n    class Block\n    Document \"1\" --> \"*\" Block\n",
+    "gantt\n    title Plan\n    dateFormat  YYYY-MM-DD\n    section Core\n    Model :done, a1, 2026-11-19, 2d\n    Layout :active, a2, after a1, 3d\n    section Pictures\n    Diagrams : b1, after a2, 4d\n",
+    "mindmap\n  root((readmd))\n    Reading\n      Markdown\n    Pictures\n      Mermaid\n    Navigation\n",
+    "stateDiagram-v2\n    [*] --> Reading\n    Reading --> Searching: Ctrl+F\n    Reading --> [*]\n",
+    "pie title Time\n    \"Parsing\" : 15\n    \"Layout\" : 25\n    \"Diagrams\" : 45\n",
+];
+
+#[test]
+fn all_sample_diagram_types_render_with_the_readmd_palette() {
+    let link = readmd::theme::hex(readmd::theme::LINK);
+    for src in SAMPLES {
+        let Rendered::Svg(svg) = render_svg(src) else {
+            panic!("no svg for {src}");
+        };
+        assert!(svg.contains("<svg"), "{src}");
+        assert!(
+            svg.to_lowercase().contains("#89dceb")
+                || svg.to_lowercase().contains(&link)
+                || svg.to_lowercase().contains("#ff79c6"),
+            "no readmd colour in SVG of {src}"
+        );
+    }
+}

@@ -84,12 +84,17 @@ fn environment() -> SvgEnvironment {
     }
 }
 
-fn renderer() -> Renderer {
-    let site = SourcePresentationConfig::from_value(serde_json::json!({
+/// The merman site config: theme and theme variables.
+pub fn site_config() -> serde_json::Value {
+    serde_json::json!({
         "theme": "dark",
         "fontFamily": FONT_FAMILY,
         "themeVariables": { "fontFamily": FONT_FAMILY },
-    }));
+    })
+}
+
+fn renderer() -> Renderer {
+    let site = SourcePresentationConfig::from_value(site_config());
     Renderer::new()
         .with_parse_options(ParseOptions::strict())
         .with_presentation_engine(MermaidEngine::new().with_site_config(site))
