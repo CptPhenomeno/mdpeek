@@ -419,3 +419,36 @@ fn snapshot_of_a_picture_scrolled_half_out_of_the_top_with_the_placeholder_rende
     terminal.draw(|f| app.render(f)).unwrap();
     insta::assert_snapshot!(terminal.backend());
 }
+
+#[test]
+fn no_cell_has_the_default_background_with_a_picture_and_an_overlay_crossing_it() {
+    use ratatui::style::Color;
+    use ratatui_image::picker::{Picker, ProtocolType};
+    let (w, h) = (40, 10 + CHROME);
+    let mut app = pic_app(w, h);
+    let mut picker = Picker::halfblocks();
+    picker.set_protocol_type(ProtocolType::Iterm2);
+    let mut set = crate::graphics::PictureSet::sliced(picker, image::Rgba([26, 27, 38, 255]));
+    set.insert(
+        PictureKey::Diagram(0),
+        image::DynamicImage::ImageRgba8(image::RgbaImage::new(40, 80)),
+    );
+    app.set_pictures(set);
+    let (idx, x) = slot_at(&app);
+    app.scroll = idx;
+    let popup = Rect::new(x + 1, 2, 10, 4);
+    app.set_overlays(vec![popup]);
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    terminal
+        .draw(|f| {
+            app.render(f);
+            crate::ui::overlay::frame(f, popup, "Popup");
+        })
+        .unwrap();
+    let buf = terminal.backend().buffer();
+    for y in 0..h {
+        for x in 0..w {
+            assert_ne!(buf[(x, y)].bg, Color::Reset, "cell ({x}, {y})");
+        }
+    }
+}
