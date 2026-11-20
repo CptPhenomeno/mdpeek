@@ -37,13 +37,38 @@ pub const EMPHASIS: Color = Color::Rgb(249, 226, 175);
 pub const CODE_BG: Color = Color::Rgb(49, 50, 68);
 
 /// `#rrggbb` form of an RGB colour, for Mermaid theme variables.
-pub fn hex(_c: Color) -> String {
-    String::new()
+pub fn hex(c: Color) -> String {
+    match c {
+        Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+        _ => "#000000".to_string(),
+    }
+}
+
+/// Heading colour of a level (1 to 6) as a plain colour.
+fn heading_colour(level: u8) -> Color {
+    heading(level).fg.unwrap_or(FG)
+}
+
+/// Text on every diagram fill: the page background, dark on vivid fills.
+pub const DIAGRAM_ON_FILL: Color = BG;
+
+/// Solid diagram fills, in section order (cScale / pie slices): the heading
+/// colours, then the link, accent, emphasis and error colours.
+pub fn diagram_scale() -> Vec<Color> {
+    let mut v: Vec<Color> = (1..=6).map(heading_colour).collect();
+    v.extend([LINK, ACCENT, EMPHASIS, ERROR]);
+    v.push(Color::Rgb(166, 227, 161));
+    v.push(Color::Rgb(250, 179, 135));
+    v
 }
 
 /// Every (fill, text) pair the diagram palette paints text over.
 pub fn diagram_fill_pairs() -> Vec<(Color, Color)> {
-    Vec::new()
+    let v: Vec<(Color, Color)> = diagram_scale()
+        .into_iter()
+        .map(|c| (c, DIAGRAM_ON_FILL))
+        .collect();
+    v
 }
 
 /// Page style: explicit background and body foreground.

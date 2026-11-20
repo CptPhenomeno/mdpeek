@@ -9,14 +9,15 @@ const PIE: &str = "pie title T\n    \"A\" : 15\n    \"B\" : 85\n";
 const MINDMAP: &str = "mindmap\n  root((r))\n    a\n    b\n";
 
 #[test]
-fn valid_flowchart_returns_svg_with_the_dark_theme_and_a_transparent_background() {
+fn valid_flowchart_returns_svg_with_the_readmd_theme_and_a_transparent_background() {
     let Rendered::Svg(svg) = render_svg(FLOWCHART) else {
         panic!("expected svg");
     };
     assert!(svg.trim_start().starts_with("<svg"));
     assert!(!svg.contains("<foreignObject"), "labels must be resvg-safe");
-    // Mermaid dark theme palette, not the default one.
-    assert!(svg.contains("#1f2020"), "dark theme colours missing");
+    // readmd palette, not Mermaid's dark theme.
+    assert!(svg.contains("#61afef"), "readmd theme colours missing");
+    assert!(!svg.contains("#1f2020"), "dark theme colours present");
     assert!(!svg.contains("#22D3EE"), "default theme colours present");
     // Transparent: the root element sets no background.
     let root = &svg[..svg.find('>').unwrap_or(svg.len())];
@@ -131,10 +132,14 @@ fn edge_label_backgrounds_are_opaque_in_the_svg() {
     let Rendered::Svg(svg) = render_svg("flowchart LR\n    A -->|yes| B\n") else {
         panic!("no svg");
     };
-    let bg = readmd::theme::hex(readmd::theme::CODE_BG);
+    let bg = readmd::theme::hex(readmd::theme::EMPHASIS);
     assert!(svg.contains(&bg), "edge label background {bg} not in SVG");
-    assert!(!svg.contains("rgba("), "translucent colour in SVG");
-    assert!(!svg.contains("fill-opacity"), "fill-opacity in SVG");
+    assert!(
+        !svg.contains(".edgeLabel rect{opacity:0.5"),
+        "edge label rectangle is faded"
+    );
+    assert!(svg.contains(".edgeLabel rect{opacity:1;"), "no opaque rule");
+    assert!(svg.contains(&format!("fill=\"{bg}\"")), "label rect fill");
 }
 
 const SAMPLES: [&str; 7] = [
