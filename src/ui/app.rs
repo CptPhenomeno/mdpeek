@@ -51,6 +51,8 @@ pub struct App {
     cell: (u16, u16),
     /// Open overlays (popups): pictures leave them uncovered.
     overlays: Vec<Rect>,
+    /// Diagrams are shown as text drawings (F8, `--text-diagrams`).
+    text_mode: bool,
     quit: bool,
 }
 
@@ -77,6 +79,7 @@ impl App {
             jobs,
             cell: CELL,
             overlays: Vec::new(),
+            text_mode: false,
             quit: false,
         };
         app.relayout();
@@ -247,7 +250,14 @@ impl App {
     }
 
     /// Starts (or leaves) diagram text mode, as `--text-diagrams` asks.
-    pub fn set_text_mode(&mut self, _on: bool) {}
+    pub fn set_text_mode(&mut self, on: bool) {
+        if self.text_mode == on {
+            return;
+        }
+        self.text_mode = on;
+        self.jobs.set_text_mode(on);
+        self.relayout_keeping_position();
+    }
 
     pub fn should_quit(&self) -> bool {
         self.quit
@@ -268,7 +278,10 @@ impl App {
             Action::PageDown => self.scroll_by(self.page()),
             Action::Top => self.scroll = 0,
             Action::Bottom => self.scroll = self.max_scroll(),
-            Action::ToggleTextDiagrams => {}
+            Action::ToggleTextDiagrams => {
+                self.set_text_mode(!self.text_mode);
+                return;
+            }
             Action::Quit => self.quit = true,
         }
         self.request_pictures();
@@ -353,7 +366,7 @@ impl App {
             &self.jobs,
             Diagrams {
                 states: &self.jobs,
-                text_mode: false,
+                text_mode: self.text_mode,
             },
         );
     }
@@ -423,8 +436,13 @@ impl App {
             Some(message) => format!(" {} | {message}", self.rel_path),
             None => format!(" {}", self.rel_path),
         };
-        // The mode area (search, text diagrams) is empty until those modes exist.
-        let right = format!("{}% ", self.percent());
+        // The mode area: search joins it later.
+        let mode = if self.text_mode {
+            "Text diagrams | "
+        } else {
+            ""
+        };
+        let right = format!("{mode}{}% ", self.percent());
         let pad = usize::from(width).saturating_sub(left.width() + right.width());
         let text = format!("{left}{}{right}", " ".repeat(pad));
         Line::styled(text, theme::status())

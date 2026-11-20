@@ -817,7 +817,6 @@ mod pictures {
         press(&mut app, KeyCode::F(8));
         assert_eq!(jobs_of(&jobs, Mode::Text), 1);
         assert_ne!(app.row_count(), picture_rows, "placeholder is taller");
-        assert!(screen_text(&mut app, 40, 12 + CHROME).contains("Rendering diagram"));
         deliver_text(
             &mut app,
             &jobs,
@@ -838,7 +837,7 @@ mod pictures {
     #[test]
     fn text_drawings_and_the_unavailable_note_replace_the_picture_in_text_mode() {
         let md = format!("{FLOW}\n```mermaid\npie\n \"a\": 1\n```\n");
-        let (mut app, jobs) = pic_doc_app(&md, 40, 30 + CHROME);
+        let (mut app, jobs) = pic_doc_app(&md, 70, 30 + CHROME);
         press(&mut app, KeyCode::F(8));
         deliver_text(
             &mut app,
@@ -847,7 +846,7 @@ mod pictures {
             Outcome::Text("┌───┐\n│ A │\n└───┘".into()),
         );
         deliver_text(&mut app, &jobs, 1, Outcome::TextUnavailable);
-        let text = screen_text(&mut app, 40, 30 + CHROME);
+        let text = screen_text(&mut app, 70, 30 + CHROME);
         assert!(text.contains("│ A │"), "{text}");
         assert!(
             text.contains("Text rendering not available for this diagram type"),

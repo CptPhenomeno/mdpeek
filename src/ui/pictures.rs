@@ -96,6 +96,10 @@ pub struct Pictures {
     /// Natural size of every picture known so far.
     naturals: HashMap<PictureKey, (u32, u32)>,
     states: HashMap<usize, DiagramState>,
+    /// Text outcomes (`Text` / `TextUnavailable`) of text-mode jobs.
+    texts: HashMap<usize, DiagramState>,
+    /// Diagrams are drawn as text, not pictures.
+    text_mode: bool,
     /// Images that are missing or cannot be decoded.
     failed: HashSet<PictureKey>,
     /// Size of the raster the picture set holds for a key.
@@ -126,6 +130,8 @@ impl Pictures {
             images,
             naturals: HashMap::new(),
             states: HashMap::new(),
+            texts: HashMap::new(),
+            text_mode: false,
             failed: HashSet::new(),
             rendered: HashMap::new(),
             requested: HashSet::new(),
@@ -136,6 +142,18 @@ impl Pictures {
             stale: HashSet::new(),
             due: None,
         }
+    }
+
+    /// Switches diagram text mode; diagram jobs of the other mode are forgotten
+    /// so the new mode submits its own (cached pictures are not rendered again).
+    pub fn set_text_mode(&mut self, on: bool) {
+        if self.text_mode == on {
+            return;
+        }
+        self.text_mode = on;
+        let diagram = |id: &(PictureKey, (u32, u32))| matches!(id.0, PictureKey::Diagram(_));
+        self.requested.retain(|id| !diagram(id));
+        self.inflight.retain(|id| !diagram(id));
     }
 
     pub fn set_clock(&mut self, clock: Box<dyn Clock>) {
@@ -249,8 +267,20 @@ impl Pictures {
                 }
                 Some(None)
             }
-            // Text mode is not wired yet.
-            Outcome::Text(_) | Outcome::TextUnavailable => None,
+            Outcome::Text(text) => {
+                self.set_text(key, DiagramState::Text(text));
+                Some(None)
+            }
+            Outcome::TextUnavailable => {
+                self.set_text(key, DiagramState::TextUnavailable);
+                Some(None)
+            }
+        }
+    }
+
+    fn set_text(&mut self, key: PictureKey, state: DiagramState) {
+        if let PictureKey::Diagram(n) = key {
+            self.texts.insert(n, state);
         }
     }
 
@@ -277,21 +307,38 @@ impl Pictures {
             if index + usize::from(slot.rows) <= first {
                 continue;
             }
+            let text_job = self.text_mode && matches!(slot.key, PictureKey::Diagram(_));
             let Some(source) = self.render_source(slot.key.clone(), slot.known) else {
                 continue;
             };
+            if text_job {
+                let PictureKey::Diagram(n) = slot.key else {
+                    continue;
+                };
+                if !self.texts.contains_key(&n) {
+                    let priority = u32::try_from(self.distance(index, slot.rows, scroll, height))
+                        .unwrap_or(u32::MAX);
+                    self.submit(slot.key.clone(), source, Mode::Text, slot.px, priority);
+                }
+                continue;
+            }
             if self.covers(&slot.key, slot.px)
                 || (self.settling() && self.stale.contains(&slot.key))
             {
                 continue;
             }
-            let distance = if index >= scroll + height {
-                index + 1 - (scroll + height)
-            } else {
-                (scroll + 1).saturating_sub(index + usize::from(slot.rows))
-            };
-            let priority = u32::try_from(distance).unwrap_or(u32::MAX);
+            let priority =
+                u32::try_from(self.distance(index, slot.rows, scroll, height)).unwrap_or(u32::MAX);
             self.submit(slot.key.clone(), source, Mode::Render, slot.px, priority);
+        }
+    }
+
+    /// Rows between a slot and the viewport (0 when they overlap).
+    fn distance(&self, index: usize, rows: u16, scroll: usize, height: usize) -> usize {
+        if index >= scroll + height {
+            index + 1 - (scroll + height)
+        } else {
+            (scroll + 1).saturating_sub(index + usize::from(rows))
         }
     }
 
@@ -351,6 +398,13 @@ impl DiagramStates for Pictures {
     fn state(&self, n: usize) -> DiagramState {
         if self.stale.contains(&PictureKey::Diagram(n)) {
             return DiagramState::Pending(None);
+        }
+        if self.text_mode {
+            return match (self.texts.get(&n), self.states.get(&n)) {
+                (Some(text), _) => text.clone(),
+                (None, Some(error @ DiagramState::Error(_))) => error.clone(),
+                _ => DiagramState::Pending(None),
+            };
         }
         self.states
             .get(&n)

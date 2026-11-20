@@ -32,7 +32,7 @@ fn main() -> ExitCode {
             String::new(),
         ),
     };
-    match ui::run(doc, rel_path, config.protocol) {
+    match ui::run(doc, rel_path, config.protocol, config.text_diagrams) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("readmd: {err}");

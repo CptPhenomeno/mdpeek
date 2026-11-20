@@ -33,8 +33,13 @@ const RESULT_POLL: Duration = Duration::from_millis(50);
 const IDLE_POLL: Duration = Duration::from_secs(1);
 
 /// Run the viewer on `doc` until the user quits; `rel_path` is shown in the status bar.
-/// `protocol` is the `--protocol` choice; the detected one is announced in the status bar.
-pub fn run(doc: Document, rel_path: String, protocol: ProtocolChoice) -> io::Result<()> {
+/// `text_diagrams` is `--text-diagrams`. `protocol` is the `--protocol` choice; the detected one is announced in the status bar.
+pub fn run(
+    doc: Document,
+    rel_path: String,
+    protocol: ProtocolChoice,
+    text_diagrams: bool,
+) -> io::Result<()> {
     terminal::install_panic_hook(terminal::restore_terminal);
     let _guard = terminal::TerminalGuard::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
@@ -42,6 +47,7 @@ pub fn run(doc: Document, rel_path: String, protocol: ProtocolChoice) -> io::Res
     let detector = StdioDetector::default();
     let selection = select(protocol, &detector);
     let mut app = App::new(doc, rel_path);
+    app.set_text_mode(text_diagrams);
     app.set_cell(selection.cell);
     app.set_pictures(PictureSet::sliced(
         selection.picker(&detector),
