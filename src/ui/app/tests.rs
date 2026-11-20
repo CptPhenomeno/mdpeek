@@ -278,3 +278,134 @@ fn too_narrow_and_empty_screens_have_the_theme_background() {
     let mut empty = app_from("", 40, 10);
     assert_all_bg(&buffer(&mut empty, 40, 10));
 }
+
+// Picture clipping (KB-39), with the placeholder renderer.
+
+use crate::layout::PictureKey;
+use ratatui::layout::Rect;
+
+const PIC_MD_PRE: usize = 8;
+
+/// Eight paragraphs, a diagram, then more text; the diagram's slot is 4x4 cells.
+fn pic_app(width: u16, height: u16) -> App {
+    let md = format!(
+        "{}\n\n```mermaid\ngraph TD\nA-->B\n```\n\n{}",
+        many(PIC_MD_PRE),
+        many(20)
+    );
+    let mut app = app_from(&md, width, height);
+    app.add_picture(
+        PictureKey::Diagram(0),
+        image::DynamicImage::ImageRgba8(image::RgbaImage::new(40, 80)),
+    );
+    app.resize(width, height);
+    app
+}
+
+/// (first row index, screen x of the slot's left edge) of the only slot.
+fn slot_at(app: &App) -> (usize, u16) {
+    let (i, row) = app
+        .layout
+        .rows
+        .iter()
+        .enumerate()
+        .find(|(_, r)| r.slot.is_some())
+        .expect("a slot");
+    let slot = row.slot.as_ref().unwrap();
+    assert_eq!((slot.cols, slot.rows, slot.known), (4, 4, true));
+    (i, 1 + crate::layout::MARGIN + slot.left)
+}
+
+fn hashes(buf: &Buffer) -> Vec<(u16, u16)> {
+    let mut v = Vec::new();
+    for y in 0..buf.area.height {
+        for x in 0..buf.area.width {
+            if buf[(x, y)].symbol() == "#" {
+                v.push((x, y));
+            }
+        }
+    }
+    v
+}
+
+fn rect_cells(x: u16, y: u16, w: u16, h: u16) -> Vec<(u16, u16)> {
+    let mut v = Vec::new();
+    for yy in y..y + h {
+        for xx in x..x + w {
+            v.push((xx, yy));
+        }
+    }
+    v
+}
+
+#[test]
+fn slot_partly_above_the_viewport_draws_only_its_visible_lower_part() {
+    let mut app = pic_app(40, 10 + CHROME);
+    let (idx, x) = slot_at(&app);
+    app.scroll = idx + 2;
+    let buf = buffer(&mut app, 40, 10 + CHROME);
+    assert_eq!(hashes(&buf), rect_cells(x, 1, 4, 2));
+}
+
+#[test]
+fn slot_partly_below_the_viewport_draws_only_its_visible_upper_part() {
+    let mut app = pic_app(40, 6 + CHROME);
+    let (idx, x) = slot_at(&app);
+    app.scroll = idx - 4;
+    let buf = buffer(&mut app, 40, 6 + CHROME);
+    assert_eq!(hashes(&buf), rect_cells(x, 5, 4, 2));
+}
+
+#[test]
+fn picture_never_writes_cells_outside_the_document_pane() {
+    let (w, h) = (40, 6 + CHROME);
+    let mut app = pic_app(w, h);
+    let (idx, _) = slot_at(&app);
+    let mut seen = 0;
+    for scroll in 0..app.max_scroll() {
+        app.scroll = scroll;
+        let buf = buffer(&mut app, w, h);
+        let cells = hashes(&buf);
+        let visible = scroll < idx + 4 && idx < scroll + 6;
+        assert_eq!(!cells.is_empty(), visible, "scroll {scroll}");
+        seen += usize::from(visible);
+        for (x, y) in cells {
+            assert!(
+                (1..w - 1).contains(&x) && (1..1 + 6).contains(&y),
+                "{x},{y}"
+            );
+        }
+    }
+    assert!(seen > 0);
+}
+
+#[test]
+fn an_overlay_covering_a_picture_hides_the_covered_part() {
+    let mut app = pic_app(40, 10 + CHROME);
+    let (idx, x) = slot_at(&app);
+    app.scroll = idx;
+    let overlay = Rect::new(x + 2, 2, 5, 2);
+    app.set_overlays(vec![overlay]);
+    let buf = buffer(&mut app, 40, 10 + CHROME);
+    // Exact per cell with the placeholder renderer. Sixel and iTerm2 hide the
+    // whole rows an overlay crosses instead (see graphics::clear_row_bands).
+    let expected: Vec<(u16, u16)> = rect_cells(x, 1, 4, 4)
+        .into_iter()
+        .filter(|&(cx, cy)| !overlay.contains((cx, cy).into()))
+        .collect();
+    assert_eq!(hashes(&buf), expected);
+}
+
+#[test]
+fn a_picture_scrolled_out_of_view_is_cleared() {
+    let (w, h) = (40, 10 + CHROME);
+    let mut app = pic_app(w, h);
+    let (idx, x) = slot_at(&app);
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    app.scroll = idx;
+    terminal.draw(|f| app.render(f)).unwrap();
+    assert_eq!(hashes(terminal.backend().buffer()), rect_cells(x, 1, 4, 4));
+    app.scroll = idx + 4;
+    terminal.draw(|f| app.render(f)).unwrap();
+    assert!(hashes(terminal.backend().buffer()).is_empty());
+}

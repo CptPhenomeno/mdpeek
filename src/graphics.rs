@@ -3,6 +3,7 @@
 //! Spike (KB-7): the geometry is pure and testable; the renderers draw into a
 //! ratatui `Buffer` so that every protocol is checked the same way.
 
+use crate::layout::{PictureKey, PictureSizes, Slot};
 use image::{DynamicImage, Rgba, RgbaImage};
 use ratatui::{
     buffer::Buffer,
@@ -231,6 +232,33 @@ impl PictureRenderer for SlicedRenderer {
     }
 }
 
+/// Where encoded pictures live, keyed by [`PictureKey`] (stub).
+pub struct PictureSet;
+
+impl PictureSet {
+    pub fn placeholder(_symbol: char) -> Self {
+        Self
+    }
+
+    pub fn sliced(_picker: Picker, _bg: Rgba<u8>) -> Self {
+        Self
+    }
+
+    pub fn insert(&mut self, _key: PictureKey, _img: DynamicImage) {}
+
+    pub fn encode_count(&self) -> usize {
+        0
+    }
+
+    pub fn draw(&mut self, _slot: &Slot, _request: &PictureRequest<'_>, _buf: &mut Buffer) {}
+}
+
+impl PictureSizes for PictureSet {
+    fn natural_size(&self, _key: &PictureKey) -> Option<(u32, u32)> {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,5 +369,48 @@ mod tests {
         // pieces never overlap each other
         let total: u32 = pieces.iter().map(|r| r.area()).sum();
         assert_eq!(total, 8 * 6 - 4 * 2);
+    }
+
+    fn slot(px: (u32, u32)) -> Slot {
+        Slot {
+            key: PictureKey::Diagram(0),
+            cols: 4,
+            rows: 4,
+            px,
+            left: 0,
+            known: true,
+        }
+    }
+
+    #[test]
+    fn scrolling_a_picture_encodes_it_once_per_slot_size() {
+        let mut set = PictureSet::placeholder('#');
+        set.insert(
+            PictureKey::Diagram(0),
+            DynamicImage::ImageRgba8(RgbaImage::new(80, 160)),
+        );
+        let mut buf = Buffer::empty(Rect::new(0, 0, 80, 12));
+        for top in [3, 2, 1, 0, -1, -2] {
+            let request = PictureRequest {
+                pane: pane(),
+                slot_top: top,
+                slot_left: 30,
+                slot_cols: 4,
+                slot_rows: 4,
+                overlays: &[],
+            };
+            set.draw(&slot((40, 80)), &request, &mut buf);
+        }
+        assert_eq!(set.encode_count(), 1);
+        let request = PictureRequest {
+            pane: pane(),
+            slot_top: 3,
+            slot_left: 30,
+            slot_cols: 2,
+            slot_rows: 2,
+            overlays: &[],
+        };
+        set.draw(&slot((20, 40)), &request, &mut buf);
+        assert_eq!(set.encode_count(), 2);
     }
 }

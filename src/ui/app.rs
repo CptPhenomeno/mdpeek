@@ -105,6 +105,12 @@ impl App {
         self.message = Some(message.into());
     }
 
+    /// Hand a decoded picture to the pane (stub).
+    pub fn add_picture(&mut self, _key: crate::layout::PictureKey, _img: image::DynamicImage) {}
+
+    /// Rectangles of open overlays; pictures never draw under them (stub).
+    pub fn set_overlays(&mut self, _overlays: Vec<Rect>) {}
+
     pub fn should_quit(&self) -> bool {
         self.quit
     }
