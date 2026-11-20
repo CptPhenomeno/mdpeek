@@ -12,12 +12,14 @@ use ratatui::{
 };
 use ratatui_image::{
     errors::Errors,
-    picker::Picker,
+    picker::{Picker, ProtocolType},
     sliced::{SignedPosition, SlicedImage, SlicedProtocol},
 };
 use std::collections::HashMap;
 
 pub mod detect;
+pub mod iterm2;
+use iterm2::{Iterm2Renderer, Iterm2Rows};
 
 /// The part of an image slot that intersects the document pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -235,6 +237,54 @@ impl PictureRenderer for SlicedRenderer {
     }
 }
 
+/// The image to encode for `slot` and the density it is encoded at (KB-72).
+///
+/// A raster of exactly `density` times the slot size is kept as it is. Any
+/// other raster (a bitmap with fewer pixels, or one from an older slot size)
+/// falls back to density 1 and is resized to the slot, the only resample left.
+/// The result is then padded with `bg` to whole cells of `cell` pixels times
+/// the density, so the encoder maps it onto the slot's cells one to one and
+/// never stretches it.
+pub fn prepare_for_encode(
+    img: &DynamicImage,
+    slot: &Slot,
+    cell: (u32, u32),
+    density: u32,
+    bg: Rgba<u8>,
+) -> (DynamicImage, u32) {
+    let density = density.max(1);
+    let dims = (img.width(), img.height());
+    let want = (
+        slot.px.0.max(1).saturating_mul(density),
+        slot.px.1.max(1).saturating_mul(density),
+    );
+    let used = if density > 1 && dims == want {
+        density
+    } else {
+        1
+    };
+    let target = (slot.px.0.max(1) * used, slot.px.1.max(1) * used);
+    let img = if dims == target {
+        img.clone()
+    } else {
+        img.resize_exact(target.0, target.1, FilterType::Triangle)
+    };
+    let cells = (
+        u32::from(slot.cols) * cell.0 * used,
+        u32::from(slot.rows) * cell.1 * used,
+    );
+    if cells.0 <= target.0 && cells.1 <= target.1 {
+        return (img, used);
+    }
+    let mut canvas = RgbaImage::from_pixel(
+        cells.0.max(target.0),
+        cells.1.max(target.1),
+        Rgba([bg[0], bg[1], bg[2], 255]),
+    );
+    image::imageops::overlay(&mut canvas, &img.to_rgba8(), 0, 0);
+    (DynamicImage::ImageRgba8(canvas), used)
+}
+
 /// How pictures are turned into renderers.
 enum Backend {
     /// Marker symbol per visible cell; no pixels (snapshot tests).
@@ -257,6 +307,8 @@ pub struct PictureSet {
     backend: Backend,
     items: HashMap<PictureKey, Entry>,
     encodes: usize,
+    /// Raster pixels per slot pixel the pictures are delivered at.
+    density: u32,
 }
 
 impl std::fmt::Debug for PictureSet {
@@ -274,6 +326,7 @@ impl PictureSet {
             backend,
             items: HashMap::new(),
             encodes: 0,
+            density: 1,
         }
     }
 
@@ -284,8 +337,12 @@ impl PictureSet {
 
     /// Draws real graphics with the protocol of `picker`; transparent pixels
     /// are composited over `bg` (SPEC §4.2).
-    pub fn sliced(picker: Picker, bg: Rgba<u8>) -> Self {
-        Self::with(Backend::Sliced { picker, bg })
+    /// Rasters of `density` times the slot size are encoded as they are, for
+    /// iTerm2 only (cell-unit rows); other protocols always encode at 1x.
+    pub fn sliced(picker: Picker, bg: Rgba<u8>, density: u32) -> Self {
+        let mut set = Self::with(Backend::Sliced { picker, bg });
+        set.density = density.max(1);
+        set
     }
 
     /// Adds or replaces the picture of `key`; its encoding is dropped.
@@ -315,18 +372,26 @@ impl PictureSet {
                     Some(Box::new(PlaceholderRenderer { symbol: *symbol }))
                 }
                 Backend::Sliced { picker, bg } => {
-                    let img = if (entry.img.width(), entry.img.height()) == slot.px {
-                        entry.img.clone()
+                    let font = picker.font_size();
+                    let iterm2 = picker.protocol_type() == ProtocolType::Iterm2;
+                    let (img, used) = prepare_for_encode(
+                        &entry.img,
+                        slot,
+                        (u32::from(font.width), u32::from(font.height)),
+                        if iterm2 { self.density } else { 1 },
+                        *bg,
+                    );
+                    if iterm2 {
+                        let flat = flatten_over(&img, *bg);
+                        Iterm2Rows::new(&flat, slot.cols, slot.rows, picker.tmux_detected())
+                            .ok()
+                            .map(|r| Box::new(Iterm2Renderer::new(r)) as Box<dyn PictureRenderer>)
                     } else {
-                        entry.img.resize_exact(
-                            slot.px.0.max(1),
-                            slot.px.1.max(1),
-                            FilterType::Triangle,
-                        )
-                    };
-                    SlicedRenderer::new(picker, img, *bg)
-                        .ok()
-                        .map(|r| Box::new(r) as Box<dyn PictureRenderer>)
+                        debug_assert_eq!(used, 1);
+                        SlicedRenderer::new(picker, img, *bg)
+                            .ok()
+                            .map(|r| Box::new(r) as Box<dyn PictureRenderer>)
+                    }
                 }
             };
             self.encodes += 1;
@@ -340,7 +405,11 @@ impl PictureSet {
 
 impl PictureSizes for PictureSet {
     fn natural_size(&self, key: &PictureKey) -> Option<(u32, u32)> {
-        self.items.get(key).map(|e| (e.img.width(), e.img.height()))
+        // Slot pixels: the raster divided by the density it was made at.
+        let d = self.density;
+        self.items
+            .get(key)
+            .map(|e| (e.img.width().div_ceil(d), e.img.height().div_ceil(d)))
     }
 }
 
@@ -465,6 +534,56 @@ mod tests {
             left: 0,
             known: true,
         }
+    }
+
+    const BG: Rgba<u8> = Rgba([1, 2, 3, 255]);
+
+    fn cell_slot(px: (u32, u32), cols: u16, rows: u16) -> Slot {
+        Slot {
+            cols,
+            rows,
+            ..slot(px)
+        }
+    }
+
+    fn red(w: u32, h: u32) -> DynamicImage {
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(w, h, Rgba([255, 0, 0, 255])))
+    }
+
+    #[test]
+    fn an_svg_picture_reaches_the_encoder_at_exactly_the_rasterised_size() {
+        // 4x2 cells of 10x20 px at density 2 are 80x80 px: no resize, no padding.
+        let img = red(80, 80);
+        let (out, d) = prepare_for_encode(&img, &cell_slot((40, 40), 4, 2), (10, 20), 2, BG);
+        assert_eq!(d, 2);
+        assert_eq!(out.to_rgba8().as_raw(), img.to_rgba8().as_raw());
+    }
+
+    #[test]
+    fn a_picture_short_of_whole_cells_is_padded_not_resampled() {
+        let (out, d) =
+            prepare_for_encode(&red(70, 60), &cell_slot((35, 30), 4, 2), (10, 20), 2, BG);
+        assert_eq!(d, 2);
+        assert_eq!((out.width(), out.height()), (80, 80));
+        let rgba = out.to_rgba8();
+        assert_eq!(rgba.get_pixel(69, 59).0, [255, 0, 0, 255]);
+        assert_eq!(rgba.get_pixel(79, 79).0, [1, 2, 3, 255]);
+    }
+
+    #[test]
+    fn a_picture_below_the_density_falls_back_to_one_x_without_upscaling() {
+        // A 30x20 bitmap in a 30x20 slot has no 2x pixels to offer.
+        let (out, d) =
+            prepare_for_encode(&red(30, 20), &cell_slot((30, 20), 3, 1), (10, 20), 2, BG);
+        assert_eq!(d, 1);
+        assert_eq!((out.width(), out.height()), (30, 20));
+    }
+
+    #[test]
+    fn natural_size_is_reported_in_slot_pixels_not_raster_pixels() {
+        let mut set = PictureSet::sliced(Picker::halfblocks(), BG, 2);
+        set.insert(PictureKey::Diagram(0), red(80, 40));
+        assert_eq!(set.natural_size(&PictureKey::Diagram(0)), Some((40, 20)));
     }
 
     #[test]

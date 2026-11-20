@@ -174,6 +174,11 @@ impl App {
         self.relayout_keeping_position();
     }
 
+    /// Raster pixels per slot pixel for the render jobs (KB-72).
+    pub fn set_density(&mut self, density: u32) {
+        self.jobs.set_density(density);
+    }
+
     /// Hand a decoded picture to the pane: slots are laid out at its size.
     pub fn add_picture(&mut self, key: PictureKey, img: image::DynamicImage) {
         self.jobs

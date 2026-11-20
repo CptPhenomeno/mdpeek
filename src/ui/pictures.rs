@@ -108,6 +108,8 @@ pub struct Pictures {
     requested: HashSet<(PictureKey, (u32, u32))>,
     inflight: HashSet<(PictureKey, (u32, u32))>,
     generation: u64,
+    /// Raster pixels per slot pixel of the jobs submitted (KB-72).
+    density: u32,
     sink: Option<Box<dyn JobSink>>,
     clock: Box<dyn Clock>,
     /// Pictures whose raster no longer fits their slot (SPEC §4.21): they show
@@ -137,6 +139,7 @@ impl Pictures {
             requested: HashSet::new(),
             inflight: HashSet::new(),
             generation: 1,
+            density: 1,
             sink: None,
             clock: Box::new(SystemClock::default()),
             stale: HashSet::new(),
@@ -198,6 +201,11 @@ impl Pictures {
         self.due.is_some_and(|d| self.clock.now() < d)
     }
 
+    /// Raster `density` times the slot size (never below 1).
+    pub fn set_density(&mut self, density: u32) {
+        self.density = density.max(1);
+    }
+
     pub fn set_sink(&mut self, sink: Box<dyn JobSink>) {
         sink.set_generation(self.generation);
         self.sink = Some(sink);
@@ -247,8 +255,13 @@ impl Pictures {
                 }
                 self.failed.remove(&key);
                 self.naturals.insert(key.clone(), natural);
-                self.rendered
-                    .insert(key.clone(), (image.width(), image.height()));
+                // Slot pixels: the raster divided by the density, so a 2x raster
+                // does not look like it covers a slot twice as large.
+                let d = self.density;
+                self.rendered.insert(
+                    key.clone(),
+                    (image.width().div_ceil(d), image.height().div_ceil(d)),
+                );
                 Some(Some(Arrived { key, image }))
             }
             Outcome::Natural(w, h) => {
@@ -379,6 +392,7 @@ impl Pictures {
             mode,
             width: px.0,
             height: px.1,
+            density: self.density,
             generation: self.generation,
             priority,
         };
