@@ -63,22 +63,46 @@ fn heading_colour(level: u8) -> Color {
 /// Text on every diagram fill: the page background, dark on vivid fills.
 pub const DIAGRAM_ON_FILL: Color = BG;
 
-/// Solid diagram fills, in section order (cScale / pie slices): the heading
-/// colours, then the link, accent, emphasis and error colours.
+/// Share of the light neutral blended into every theme colour to make a pastel.
+const PASTEL: f32 = 0.5;
+
+/// Soft version of a theme colour: blended toward the body foreground.
+pub fn pastel(c: Color) -> Color {
+    mix(c, FG, PASTEL)
+}
+
+/// Slightly deeper tone of a fill, for borders that keep shapes defined on [`BG`].
+pub fn deepen(fill: Color) -> Color {
+    mix(fill, BG, 0.35)
+}
+
+/// Fill of ordinary nodes, actors, states, classes and tasks: a soft blue-lavender.
+pub fn primary_fill() -> Color {
+    pastel(LINK)
+}
+
+/// Lines, arrows and transitions: a soft light tone between body and muted text.
+pub fn diagram_line() -> Color {
+    mix(FG, MUTED, 0.35)
+}
+
+/// Pastel diagram fills, in section order (cScale / pie slices): the heading
+/// colours, then the link, accent, emphasis and error colours, softened.
 pub fn diagram_scale() -> Vec<Color> {
     let mut v: Vec<Color> = (1..=6).map(heading_colour).collect();
     v.extend([LINK, ACCENT, EMPHASIS, ERROR]);
     v.push(Color::Rgb(166, 227, 161));
     v.push(Color::Rgb(250, 179, 135));
-    v
+    v.into_iter().map(pastel).collect()
 }
 
 /// Every (fill, text) pair the diagram palette paints text over.
 pub fn diagram_fill_pairs() -> Vec<(Color, Color)> {
-    let v: Vec<(Color, Color)> = diagram_scale()
+    let mut v: Vec<(Color, Color)> = diagram_scale()
         .into_iter()
         .map(|c| (c, DIAGRAM_ON_FILL))
         .collect();
+    v.push((primary_fill(), DIAGRAM_ON_FILL));
     v
 }
 

@@ -16,7 +16,10 @@ fn valid_flowchart_returns_svg_with_the_readmd_theme_and_a_transparent_backgroun
     assert!(svg.trim_start().starts_with("<svg"));
     assert!(!svg.contains("<foreignObject"), "labels must be resvg-safe");
     // readmd palette, not Mermaid's dark theme.
-    assert!(svg.contains("#61afef"), "readmd theme colours missing");
+    assert!(
+        svg.contains(&readmd::theme::hex(readmd::theme::primary_fill())),
+        "readmd theme colours missing"
+    );
     assert!(!svg.contains("#1f2020"), "dark theme colours present");
     assert!(!svg.contains("#22D3EE"), "default theme colours present");
     // Transparent: the root element sets no background.
@@ -146,7 +149,7 @@ fn edge_label_backgrounds_are_opaque_in_the_svg() {
     let Rendered::Svg(svg) = render_svg("flowchart LR\n    A -->|yes| B\n") else {
         panic!("no svg");
     };
-    let bg = readmd::theme::hex(readmd::theme::EMPHASIS);
+    let bg = readmd::theme::hex(readmd::theme::pastel(readmd::theme::EMPHASIS));
     assert!(svg.contains(&bg), "edge label background {bg} not in SVG");
     assert!(
         !svg.contains(".edgeLabel rect{opacity:0.5"),
@@ -168,16 +171,17 @@ const SAMPLES: [&str; 7] = [
 
 #[test]
 fn all_sample_diagram_types_render_with_the_readmd_palette() {
-    let link = readmd::theme::hex(readmd::theme::LINK);
+    let scale: Vec<String> = readmd::theme::diagram_scale()
+        .into_iter()
+        .map(readmd::theme::hex)
+        .collect();
     for src in SAMPLES {
         let Rendered::Svg(svg) = render_svg(src) else {
             panic!("no svg for {src}");
         };
         assert!(svg.contains("<svg"), "{src}");
         assert!(
-            svg.to_lowercase().contains("#89dceb")
-                || svg.to_lowercase().contains(&link)
-                || svg.to_lowercase().contains("#ff79c6"),
+            scale.iter().any(|c| svg.to_lowercase().contains(c)),
             "no readmd colour in SVG of {src}"
         );
     }
