@@ -17,6 +17,8 @@ use ratatui_image::{
 };
 use std::collections::HashMap;
 
+pub mod detect;
+
 /// The part of an image slot that intersects the document pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VisiblePart {
