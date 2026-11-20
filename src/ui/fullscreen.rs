@@ -10,6 +10,9 @@ pub const ZOOM_STEP: f64 = 1.25;
 /// Fraction of the visible area moved by one pan.
 pub const PAN_FRACTION: f64 = 0.10;
 
+/// Tolerance for float comparisons.
+const SNAP: f64 = 1e-9;
+
 /// A pan direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PanDir {
@@ -43,48 +46,91 @@ impl ZoomState {
         Self {
             natural,
             screen,
-            zoom: 0.0,
-            center: (0.0, 0.0),
+            zoom: 1.0,
+            center: (natural.0 / 2.0, natural.1 / 2.0),
         }
     }
 
     /// The screen area changed: keep the zoom and the centre, re-clamp.
-    pub fn resize(&mut self, _screen: (f64, f64)) {}
+    pub fn resize(&mut self, screen: (f64, f64)) {
+        self.screen = screen;
+        self.clamp();
+    }
 
-    pub fn zoom_in(&mut self) {}
-    pub fn zoom_out(&mut self) {}
-    pub fn reset(&mut self) {}
-    pub fn pan(&mut self, _dir: PanDir) {}
+    pub fn zoom_in(&mut self) {
+        let z = self.zoom * ZOOM_STEP;
+        // Snap so repeated float products never leave a hair below the cap.
+        self.zoom = if z > MAX_ZOOM - SNAP { MAX_ZOOM } else { z };
+        self.clamp();
+    }
+
+    pub fn zoom_out(&mut self) {
+        let z = self.zoom / ZOOM_STEP;
+        self.zoom = if z < 1.0 + SNAP { 1.0 } else { z };
+        self.clamp();
+    }
+
+    /// Back to fit, centred.
+    pub fn reset(&mut self) {
+        self.zoom = 1.0;
+        self.center = (self.natural.0 / 2.0, self.natural.1 / 2.0);
+        self.clamp();
+    }
+
+    /// Pan by 10% of the visible area, only along an axis the picture
+    /// exceeds the screen on.
+    pub fn pan(&mut self, dir: PanDir) {
+        let vis = self.visible();
+        match dir {
+            PanDir::Left | PanDir::Right if self.can_pan_x() => {
+                let d = vis.0 * PAN_FRACTION;
+                self.center.0 += if dir == PanDir::Left { -d } else { d };
+            }
+            PanDir::Up | PanDir::Down if self.can_pan_y() => {
+                let d = vis.1 * PAN_FRACTION;
+                self.center.1 += if dir == PanDir::Up { -d } else { d };
+            }
+            _ => {}
+        }
+        self.clamp();
+    }
 
     /// Scale from natural size to screen pixels at the current zoom.
     pub fn scale(&self) -> f64 {
-        0.0
+        self.fit_scale() * self.zoom
     }
 
-    /// Scale at 100%: fit to screen, never above natural size.
+    /// Scale at 100%: fit to screen, never above natural size (SPEC §4.12;
+    /// a picture smaller than the screen stays at natural size).
     pub fn fit_scale(&self) -> f64 {
-        0.0
+        let (w, h) = self.natural;
+        if w <= 0.0 || h <= 0.0 {
+            return 1.0;
+        }
+        (self.screen.0 / w).min(self.screen.1 / h).min(1.0)
     }
 
     /// Zoom percentage relative to fit, for the status bar.
     pub fn percent(&self) -> u32 {
-        0
+        (self.zoom * 100.0).round() as u32
     }
 
     /// Region of the picture to rasterise, in natural pixels.
     pub fn source_rect(&self) -> SourceRect {
+        let (vw, vh) = self.visible();
         SourceRect {
-            x: 0.0,
-            y: 0.0,
-            w: 0.0,
-            h: 0.0,
+            x: self.center.0 - vw / 2.0,
+            y: self.center.1 - vh / 2.0,
+            w: vw,
+            h: vh,
         }
     }
 
     /// Size in screen pixels of the rasterised region (it is centred on
     /// the screen when smaller than it).
     pub fn dest_size(&self) -> (f64, f64) {
-        (0.0, 0.0)
+        let (vw, vh) = self.visible();
+        (vw * self.scale(), vh * self.scale())
     }
 
     /// Viewport centre in natural pixels.
@@ -94,12 +140,40 @@ impl ZoomState {
 
     /// Whether the picture exceeds the screen on the horizontal axis.
     pub fn can_pan_x(&self) -> bool {
-        false
+        self.natural.0 * self.scale() > self.screen.0 + SNAP
     }
 
     /// Whether the picture exceeds the screen on the vertical axis.
     pub fn can_pan_y(&self) -> bool {
-        false
+        self.natural.1 * self.scale() > self.screen.1 + SNAP
+    }
+
+    /// Visible extent in natural pixels, capped at the picture size.
+    fn visible(&self) -> (f64, f64) {
+        let s = self.scale();
+        if s <= 0.0 {
+            return self.natural;
+        }
+        (
+            (self.screen.0 / s).min(self.natural.0),
+            (self.screen.1 / s).min(self.natural.1),
+        )
+    }
+
+    /// Keep the visible region inside the picture; centre an axis that
+    /// is fully visible.
+    fn clamp(&mut self) {
+        let (vw, vh) = self.visible();
+        self.center.0 = clamp_axis(self.center.0, vw, self.natural.0);
+        self.center.1 = clamp_axis(self.center.1, vh, self.natural.1);
+    }
+}
+
+fn clamp_axis(center: f64, visible: f64, total: f64) -> f64 {
+    if visible >= total {
+        total / 2.0
+    } else {
+        center.clamp(visible / 2.0, total - visible / 2.0)
     }
 }
 
@@ -310,7 +384,8 @@ mod tests {
         assert!((r.w - 125.0).abs() < EPS);
         assert!(r.x + r.w <= 1000.0 + EPS);
         // A bigger screen than the zoomed picture: centred again.
-        s.resize((4000.0, 4000.0));
+        let mut s = zoomed(1);
+        s.resize((2000.0, 2000.0)); // natural size fits: whole picture shown
         assert_eq!(s.center(), (500.0, 250.0));
         assert_eq!(s.source_rect().w, 1000.0);
     }
