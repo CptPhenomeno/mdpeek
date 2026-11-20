@@ -13,8 +13,9 @@ pub trait Opener: Debug {
 pub struct SystemOpener;
 
 impl Opener for SystemOpener {
-    fn open(&self, _url: &str) -> Result<(), String> {
-        Err("not implemented".into())
+    fn open(&self, url: &str) -> Result<(), String> {
+        // Detached and silent: never blocks the UI nor writes to the terminal.
+        open::that_detached(url).map_err(|e| e.to_string())
     }
 }
 

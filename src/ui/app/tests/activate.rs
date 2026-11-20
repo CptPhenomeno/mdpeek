@@ -25,7 +25,7 @@ fn with_fake(md: &str, error: Option<&str>) -> (App, Rc<RefCell<Vec<String>>>) {
         ..Fake::default()
     };
     let urls = fake.urls.clone();
-    let mut app = app_from(md, 40, 10 + CHROME);
+    let mut app = app_from(md, 70, 10 + CHROME);
     app.set_opener(Box::new(fake));
     (app, urls)
 }
@@ -33,7 +33,7 @@ fn with_fake(md: &str, error: Option<&str>) -> (App, Rc<RefCell<Vec<String>>>) {
 fn enter_on_first(app: &mut App) -> String {
     press(app, KeyCode::Tab);
     press(app, KeyCode::Enter);
-    screen_text(app, 40, 10 + CHROME)
+    screen_text(app, 70, 10 + CHROME)
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn enter_with_nothing_focused_does_nothing() {
     assert!(urls.borrow().is_empty());
     assert!(app.fullscreen_request().is_none());
     assert_eq!(app.scroll(), 0);
-    let text = screen_text(&mut app, 40, 10 + CHROME);
+    let text = screen_text(&mut app, 70, 10 + CHROME);
     assert!(
         !text.contains("Opened") && !text.contains("not found") && !text.contains("not supported")
     );
