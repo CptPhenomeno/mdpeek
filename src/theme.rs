@@ -111,6 +111,9 @@ pub fn inline(base: Style, style: InlineStyle, linked: bool) -> Style {
     out
 }
 
+/// Error frame and message colour.
+pub const ERROR: Color = Color::Rgb(243, 139, 168);
+
 /// Code box text: body foreground on the code background.
 pub fn code() -> Style {
     Style::new().fg(FG).bg(CODE_BG)

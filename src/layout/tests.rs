@@ -715,3 +715,181 @@ fn mermaid_fence_is_a_diagram_not_a_code_box() {
     let l = lay(DIAGRAM, 40);
     assert!(code_rows(&l).is_empty());
 }
+
+// Diagram variants (SPEC §3.4.3-5).
+
+struct Fixed(Vec<DiagramState>);
+
+impl DiagramStates for Fixed {
+    fn state(&self, n: usize) -> DiagramState {
+        self.0.get(n).cloned().unwrap_or(DiagramState::Ready)
+    }
+}
+
+fn lay_diagrams(md: &str, width: u16, states: Vec<DiagramState>, text_mode: bool) -> Layout {
+    let fixed = Fixed(states);
+    layout_diagrams(
+        &Document::from_bytes(md.as_bytes(), Source::Markdown),
+        width,
+        50,
+        CELL,
+        &all_sized(100, 40),
+        Diagrams {
+            states: &fixed,
+            text_mode,
+        },
+    )
+}
+
+fn assert_within(l: &Layout, width: u16) {
+    for r in &l.rows {
+        assert!(r.text().width() <= usize::from(width - 2), "{:?}", r.text());
+    }
+}
+
+#[test]
+fn pending_diagram_reserves_a_rendering_placeholder_of_the_expected_height() {
+    let l = lay_diagrams(
+        DIAGRAM,
+        42,
+        vec![DiagramState::Pending(Some((100, 50)))],
+        false,
+    );
+    assert_eq!(l.rows.len(), 3);
+    let at = l
+        .rows
+        .iter()
+        .position(|r| r.text().contains("Rendering diagram…"));
+    assert_eq!(at, Some(1));
+    let row = &l.rows[1];
+    let text = row.text();
+    assert_eq!(text.width(), 40);
+    let lead = text.len() - text.trim_start().len();
+    let trail = text.len() - text.trim_end().len();
+    assert!(lead.abs_diff(trail) <= 1, "centred: {text:?}");
+    let s = row
+        .spans
+        .iter()
+        .find(|s| s.text.contains("Rendering"))
+        .unwrap();
+    assert_eq!(s.style.fg, Some(theme::MUTED));
+    assert_eq!(s.style.bg, Some(theme::BG));
+    assert!(row.spans.iter().all(|s| s.style.bg == Some(theme::BG)));
+    assert!(!l.rows[0].slot.as_ref().unwrap().known);
+}
+
+#[test]
+fn pending_diagram_of_unknown_size_reserves_10_rows() {
+    let l = lay_diagrams(DIAGRAM, 42, vec![DiagramState::Pending(None)], false);
+    assert_eq!(l.rows.len(), 10);
+    assert!(texts(&l).iter().any(|t| t.contains("Rendering diagram…")));
+    assert_within(&l, 42);
+}
+
+#[test]
+fn failed_diagram_shows_the_message_above_its_source_in_a_red_framed_code_block() {
+    let md = "```mermaid\ngraph TD\n  A-->\n```";
+    let l = lay_diagrams(
+        md,
+        42,
+        vec![DiagramState::Error("parse error".into())],
+        false,
+    );
+    let t = texts(&l);
+    let msg = t.iter().position(|r| r.contains("parse error")).unwrap();
+    let src = t.iter().position(|r| r.contains("A-->")).unwrap();
+    assert!(msg < src);
+    let top = t.iter().position(|r| r.starts_with('┌')).unwrap();
+    assert!(top < src && t.last().unwrap().starts_with('└'));
+    let border = l.rows[top]
+        .spans
+        .iter()
+        .find(|s| s.text.contains('┌'))
+        .unwrap();
+    assert_eq!(border.style.fg, Some(theme::ERROR));
+    assert_eq!(
+        l.rows[msg]
+            .spans
+            .iter()
+            .find(|s| s.text.contains("parse"))
+            .unwrap()
+            .style
+            .fg,
+        Some(theme::ERROR)
+    );
+    assert!(
+        l.rows[src]
+            .spans
+            .iter()
+            .any(|s| s.text.contains('│') && s.style.fg == Some(theme::ERROR))
+    );
+    assert_within(&l, 42);
+    // Still focusable, over every row of the block, and searchable like code.
+    assert!(
+        l.index
+            .focusables
+            .iter()
+            .any(|f| matches!(f, Focusable::Diagram { rows, .. } if rows.len() == l.rows.len()))
+    );
+}
+
+#[test]
+fn a_failed_diagram_does_not_change_the_layout_of_the_blocks_after_it() {
+    let md = format!("{DIAGRAM}\n\nafter the diagram\n\n- item");
+    let ok = lay_diagrams(&md, 42, vec![DiagramState::Ready], false);
+    let bad = lay_diagrams(
+        &md,
+        42,
+        vec![DiagramState::Error("boom\nline two".into())],
+        false,
+    );
+    let tail = |l: &Layout| -> Vec<(usize, String)> {
+        let from = l
+            .rows
+            .iter()
+            .position(|r| r.text() == "after the diagram")
+            .unwrap();
+        l.rows[from..].iter().map(|r| (r.block, r.text())).collect()
+    };
+    assert_eq!(tail(&ok), tail(&bad));
+    assert_ne!(ok.rows.len(), bad.rows.len());
+}
+
+#[test]
+fn text_mode_lays_out_the_text_output_instead_of_an_image_slot() {
+    let drawing = "┌───┐\n│ A │\n└───┘\n".to_string() + &"x".repeat(100);
+    let l = lay_diagrams(DIAGRAM, 42, vec![DiagramState::Text(drawing)], true);
+    assert!(slots(&l).iter().all(|s| !s.known));
+    assert!(l.rows.iter().all(|r| r.kind != RowKind::Picture));
+    let t = texts(&l);
+    assert!(t.iter().any(|r| r.contains("│ A │")));
+    assert!(
+        t.iter().any(|r| r.contains('…')),
+        "wide output is truncated"
+    );
+    assert_within(&l, 42);
+    // Outside text mode the drawing is not shown.
+    let img = lay_diagrams(DIAGRAM, 42, vec![DiagramState::Text("zzz".into())], false);
+    assert!(!texts(&img).iter().any(|r| r.contains("zzz")));
+}
+
+#[test]
+fn text_mode_without_text_output_shows_the_source_with_the_note() {
+    let md = "```mermaid\ngantt\n  title T\n```";
+    let l = lay_diagrams(md, 60, vec![DiagramState::TextUnavailable], true);
+    let t = texts(&l);
+    assert!(t.iter().any(|r| r.contains("gantt")));
+    assert!(
+        t.iter()
+            .any(|r| r.contains("Text rendering not available for this diagram type"))
+    );
+    assert!(t.iter().any(|r| r.starts_with('┌')));
+    assert_within(&l, 60);
+    let nested = lay_diagrams(
+        &format!("- item\n\n  {}", md.replace('\n', "\n  ")),
+        30,
+        vec![DiagramState::TextUnavailable],
+        true,
+    );
+    assert_within(&nested, 30);
+}

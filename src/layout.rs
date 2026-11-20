@@ -76,6 +76,33 @@ impl<F: Fn(&PictureKey) -> Option<(u32, u32)>> PictureSizes for F {
     }
 }
 
+/// How one diagram is to be laid out (SPEC §3.4.3-5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagramState {
+    /// Not rendered yet; the optional pixel size is the expected one.
+    Pending(Option<(u32, u32)>),
+    /// Rendered; its size comes from [`PictureSizes`].
+    Ready,
+    /// merman's message.
+    Error(String),
+    /// merman's text drawing.
+    Text(String),
+    /// The type has no text drawing.
+    TextUnavailable,
+}
+
+/// Per-diagram state, supplied by whoever renders (diagrams numbered from 0).
+pub trait DiagramStates {
+    fn state(&self, n: usize) -> DiagramState;
+}
+
+/// Diagram states and the text-mode flag of a layout.
+#[derive(Clone, Copy)]
+pub struct Diagrams<'a> {
+    pub states: &'a dyn DiagramStates,
+    pub text_mode: bool,
+}
+
 /// A set of whole rows reserved for one picture.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Slot {
@@ -133,6 +160,19 @@ pub struct Layout {
 /// Pictures have no known size here, so images are missing and diagrams are placeholders.
 pub fn layout(doc: &Document, width: u16, cell: (u16, u16)) -> Layout {
     layout_with(doc, width, u16::MAX, cell, &|_: &PictureKey| None)
+}
+
+/// Like [`layout_with`], with per-diagram states and text mode.
+pub fn layout_diagrams(
+    doc: &Document,
+    width: u16,
+    height: u16,
+    cell: (u16, u16),
+    sizes: &dyn PictureSizes,
+    diagrams: Diagrams,
+) -> Layout {
+    let _ = diagrams;
+    layout_with(doc, width, height, cell, sizes)
 }
 
 /// Like [`layout`], for a pane `height` rows tall, with picture sizes from `sizes`.
