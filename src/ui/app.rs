@@ -58,6 +58,7 @@ impl App {
             layout: Layout {
                 state: State::Ready,
                 rows: Vec::new(),
+                index: Default::default(),
             },
             rel_path,
             size: (80, 24),

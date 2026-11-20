@@ -7,8 +7,11 @@ use crate::theme;
 use unicode_width::UnicodeWidthChar;
 use wrap::{Piece, chunk, wrap};
 
+mod index;
 mod table;
 mod wrap;
+
+pub use index::{Focusable, Fragment, HeadingEntry, Index, TextBlock};
 
 #[cfg(test)]
 mod tests;
@@ -93,6 +96,9 @@ pub struct RowSpan {
     pub style: Style,
     /// Link target, when the run is part of a link.
     pub link: Option<String>,
+    /// Logical text unit (paragraph, heading, table cell...) the run belongs to;
+    /// `None` for markers, bars, borders and padding, which search skips.
+    pub unit: Option<usize>,
 }
 
 /// One terminal row of content, without the side margins.
@@ -117,6 +123,7 @@ impl Row {
 pub struct Layout {
     pub state: State,
     pub rows: Vec<Row>,
+    pub index: Index,
 }
 
 /// Lay `doc` out for a pane `width` columns wide; `cell` is the cell size in pixels.
@@ -138,6 +145,8 @@ pub fn layout_with(
         height: height.max(1),
         sizes,
         diagrams: std::cell::Cell::new(0),
+        units: std::cell::Cell::new(0),
+        headings: std::cell::RefCell::new(Vec::new()),
     };
     let state = if width < MIN_WIDTH {
         State::TooNarrow
@@ -149,6 +158,7 @@ pub fn layout_with(
     let mut out = Layout {
         state,
         rows: Vec::new(),
+        index: Index::default(),
     };
     if state != State::Ready {
         return out;
@@ -165,6 +175,7 @@ pub fn layout_with(
         out.rows.extend(rows);
     }
     footnotes(doc, content, &cx, &mut out.rows);
+    out.index = index::build(doc, &out.rows, &cx.headings.borrow());
     out
 }
 
@@ -176,6 +187,27 @@ struct Ctx<'a> {
     sizes: &'a dyn PictureSizes,
     /// Diagrams met so far, for their numbering.
     diagrams: std::cell::Cell<usize>,
+    /// Text units handed out so far.
+    units: std::cell::Cell<usize>,
+    /// Text unit of every heading met, in laying-out order.
+    headings: std::cell::RefCell<Vec<usize>>,
+}
+
+impl Ctx<'_> {
+    /// Give all spans of `lines` one new text unit.
+    fn tag(&self, lines: &mut [Vec<RowSpan>]) -> usize {
+        tag(lines, &self.units)
+    }
+}
+
+/// Give all spans of `lines` one new unit from `units`.
+fn tag(lines: &mut [Vec<RowSpan>], units: &std::cell::Cell<usize>) -> usize {
+    let id = units.get();
+    units.set(id + 1);
+    for span in lines.iter_mut().flatten() {
+        span.unit = Some(id);
+    }
+    id
 }
 
 /// Rows a diagram of unknown size reserves (SPEC §3.4.3).
@@ -264,7 +296,8 @@ fn paragraph_rows(inlines: &[Inline], index: usize, content: usize, cx: &Ctx) ->
             _ => false,
         });
         if meaningful {
-            let lines = wrap(pieces(run, theme::body()), content);
+            let mut lines = wrap(pieces(run, theme::body()), content);
+            cx.tag(&mut lines);
             out.extend(lines.into_iter().map(|spans| Row {
                 kind: RowKind::Text,
                 block: index,
@@ -325,6 +358,7 @@ fn footnotes(doc: &Document, content: usize, cx: &Ctx, rows: &mut Vec<Row>) {
             text: "─".repeat(content),
             style: theme::rule(),
             link: None,
+            unit: None,
         }],
     });
     for note in &doc.footnotes {
@@ -375,6 +409,7 @@ fn plain(text: &str, style: Style) -> RowSpan {
         text: text.to_string(),
         style,
         link: None,
+        unit: None,
     }
 }
 
@@ -516,6 +551,7 @@ fn block_rows(block: &Block, index: usize, content: usize, cx: &Ctx) -> Vec<Row>
             text: glyph.repeat(content),
             style: theme::rule(),
             link: None,
+            unit: None,
         }],
     };
     match block {
@@ -528,10 +564,10 @@ fn block_rows(block: &Block, index: usize, content: usize, cx: &Ctx) -> Vec<Row>
             slot_rows(key, size, index, content, cx)
         }
         Block::Heading { level, content: c } => {
-            let mut rows = make(
-                RowKind::Heading(*level),
-                wrap(pieces(c, theme::heading(*level)), content),
-            );
+            let mut lines = wrap(pieces(c, theme::heading(*level)), content);
+            let unit = cx.tag(&mut lines);
+            cx.headings.borrow_mut().push(unit);
+            let mut rows = make(RowKind::Heading(*level), lines);
             if *level <= 2 && !rows.is_empty() {
                 rows.push(rule(if *level == 1 { "═" } else { "─" }));
             }
@@ -543,10 +579,13 @@ fn block_rows(block: &Block, index: usize, content: usize, cx: &Ctx) -> Vec<Row>
                 text: String::new(),
                 style: theme::dim(),
                 link: None,
+                unit: None,
             };
-            make(RowKind::Text, chunk(text, &like, content))
+            let mut lines = chunk(text, &like, content);
+            cx.tag(&mut lines);
+            make(RowKind::Text, lines)
         }
-        Block::Table(t) => table::rows(t, index, content),
+        Block::Table(t) => table::rows(t, index, content, &cx.units),
         Block::List(list) => list_rows(list, index, content, cx),
         Block::BlockQuote(blocks) => quote_rows(blocks, index, content, cx),
         // Code is laid out by a later stage.
@@ -557,7 +596,12 @@ fn block_rows(block: &Block, index: usize, content: usize, cx: &Ctx) -> Vec<Row>
 /// Model inlines as wrapper input, with `base` under every span style.
 fn pieces(inlines: &[Inline], base: Style) -> Vec<Piece> {
     let text = |text: String, style: Style, link: Option<String>| {
-        Piece::Text(RowSpan { text, style, link })
+        Piece::Text(RowSpan {
+            text,
+            style,
+            link,
+            unit: None,
+        })
     };
     inlines
         .iter()

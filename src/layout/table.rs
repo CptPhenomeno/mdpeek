@@ -1,10 +1,12 @@
 //! Table layout: box-drawing borders, alignment and proportional shrinking.
 
+use std::cell::Cell as Counter;
+
 use ratatui::style::{Modifier, Style};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::wrap::wrap;
-use super::{Row, RowKind, RowSpan, pieces};
+use super::{Row, RowKind, RowSpan, pieces, tag};
 use crate::doc::{Align, Cell, Table};
 use crate::theme;
 
@@ -70,6 +72,7 @@ fn border(widths: &[usize], left: char, mid: char, right: char, index: usize) ->
             text,
             style: theme::rule(),
             link: None,
+            unit: None,
         }],
     }
 }
@@ -81,11 +84,13 @@ fn band(cells: &[Lines], widths: &[usize], align: &[Align], index: usize) -> Vec
         text: text.into(),
         style: theme::rule(),
         link: None,
+        unit: None,
     };
     let plain = |n: usize| RowSpan {
         text: " ".repeat(n),
         style: theme::body(),
         link: None,
+        unit: None,
     };
     (0..height)
         .map(|y| {
@@ -119,7 +124,7 @@ fn band(cells: &[Lines], widths: &[usize], align: &[Align], index: usize) -> Vec
 /// Every row is at most `content` columns wide. When the columns cannot all
 /// fit even at their minimum width, only the leading columns that fit are
 /// drawn and each row ends with a `…` marker.
-pub fn rows(table: &Table, index: usize, content: usize) -> Vec<Row> {
+pub fn rows(table: &Table, index: usize, content: usize, units: &Counter<usize>) -> Vec<Row> {
     let all_cols = table.header.len();
     if all_cols == 0 {
         return Vec::new();
@@ -161,7 +166,11 @@ pub fn rows(table: &Table, index: usize, content: usize) -> Vec<Row> {
     let lay = |row: &[Cell], style: Style| -> Vec<Lines> {
         (0..cols)
             .map(|c| match row.get(c) {
-                Some(cell) => cell_lines(cell, style, widths[c]),
+                Some(cell) => {
+                    let mut lines = cell_lines(cell, style, widths[c]);
+                    tag(&mut lines, units);
+                    lines
+                }
                 None => Vec::new(),
             })
             .collect()
@@ -184,6 +193,7 @@ pub fn rows(table: &Table, index: usize, content: usize) -> Vec<Row> {
                 text: "…".into(),
                 style: theme::dim(),
                 link: None,
+                unit: None,
             });
         }
     }
