@@ -16,6 +16,8 @@ pub enum RasterError {
     Invalid(String),
     /// The SVG has no drawable size, or the bitmap could not be allocated.
     Size,
+    /// The file is missing, unreadable or not a decodable image (SPEC §3.5.3).
+    NotFound,
 }
 
 impl std::fmt::Display for RasterError {
@@ -23,6 +25,7 @@ impl std::fmt::Display for RasterError {
         match self {
             Self::Invalid(e) => write!(f, "invalid SVG: {e}"),
             Self::Size => write!(f, "SVG has no drawable size"),
+            Self::NotFound => write!(f, "image not found or unreadable"),
         }
     }
 }
@@ -90,6 +93,20 @@ pub fn rasterise(svg: &str, max_w: u32, max_h: u32) -> Result<RgbaImage, RasterE
     RgbaImage::from_raw(pw, ph, data).ok_or(RasterError::Size)
 }
 
+/// Natural pixel size of a local image, read without decoding the pixels.
+pub fn image_size(_path: &std::path::Path) -> Result<(u32, u32), RasterError> {
+    Err(RasterError::Size)
+}
+
+/// Decode a local image to straight-alpha RGBA, scaled down to fit.
+pub fn decode_image(
+    _path: &std::path::Path,
+    _max_w: u32,
+    _max_h: u32,
+) -> Result<RgbaImage, RasterError> {
+    Err(RasterError::Size)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +164,130 @@ mod tests {
             Err(RasterError::Invalid(_))
         ));
         assert!(intrinsic_size("<svg").is_err());
+    }
+
+    // ---- local images (KB-33) ----
+
+    use image::{ImageEncoder, Rgba};
+    use std::path::PathBuf;
+
+    fn solid(w: u32, h: u32, c: [u8; 4]) -> RgbaImage {
+        RgbaImage::from_pixel(w, h, Rgba(c))
+    }
+
+    fn save(dir: &tempfile::TempDir, name: &str, img: &RgbaImage) -> PathBuf {
+        let p = dir.path().join(name);
+        img.save(&p).unwrap();
+        p
+    }
+
+    fn near(a: [u8; 4], b: [u8; 4], tol: i32) -> bool {
+        a.iter()
+            .zip(b)
+            .all(|(x, y)| (*x as i32 - y as i32).abs() <= tol)
+    }
+
+    #[test]
+    fn png_jpeg_webp_gif_decode_to_rgba() {
+        let dir = tempfile::tempdir().unwrap();
+        let red = solid(16, 8, [255, 0, 0, 255]);
+        let png = save(&dir, "a.png", &red);
+        let gif = save(&dir, "a.gif", &red);
+        let webp = dir.path().join("a.webp");
+        let mut buf = Vec::new();
+        image::codecs::webp::WebPEncoder::new_lossless(&mut buf)
+            .write_image(red.as_raw(), 16, 8, image::ExtendedColorType::Rgba8)
+            .unwrap();
+        std::fs::write(&webp, buf).unwrap();
+        let jpeg = dir.path().join("a.jpg");
+        image::DynamicImage::ImageRgba8(red.clone())
+            .to_rgb8()
+            .save(&jpeg)
+            .unwrap();
+        for p in [png, gif, webp, jpeg] {
+            let img = decode_image(&p, 100, 100).unwrap();
+            assert_eq!(img.dimensions(), (16, 8), "{p:?}");
+            assert!(near(img.get_pixel(8, 4).0, [255, 0, 0, 255], 12), "{p:?}");
+        }
+    }
+
+    #[test]
+    fn animated_gif_uses_its_first_frame() {
+        use image::codecs::gif::GifEncoder;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("anim.gif");
+        let mut enc = GifEncoder::new(std::fs::File::create(&p).unwrap());
+        enc.encode_frame(image::Frame::new(solid(8, 8, [255, 0, 0, 255])))
+            .unwrap();
+        enc.encode_frame(image::Frame::new(solid(8, 8, [0, 0, 255, 255])))
+            .unwrap();
+        drop(enc);
+        let img = decode_image(&p, 100, 100).unwrap();
+        assert_eq!(img.get_pixel(4, 4).0, [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn svg_image_file_is_rasterised_through_resvg() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("pic.svg");
+        std::fs::write(&p, svg(40, 20, RECT)).unwrap();
+        let img = decode_image(&p, 100, 100).unwrap();
+        assert_eq!(img.dimensions(), (40, 20));
+        assert_eq!(img.get_pixel(5, 5).0, [255, 0, 0, 255]);
+        assert_eq!(image_size(&p).unwrap(), (40, 20));
+    }
+
+    #[test]
+    fn image_wider_than_pane_scales_down_to_pane_width() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = save(&dir, "w.png", &solid(400, 200, [0, 255, 0, 255]));
+        let img = decode_image(&p, 100, 1000).unwrap();
+        assert_eq!(img.dimensions(), (100, 50));
+    }
+
+    #[test]
+    fn image_smaller_than_pane_keeps_natural_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = save(&dir, "s.png", &solid(30, 20, [0, 255, 0, 255]));
+        let img = decode_image(&p, 1000, 1000).unwrap();
+        assert_eq!(img.dimensions(), (30, 20));
+    }
+
+    #[test]
+    fn image_taller_than_pane_is_capped_keeping_aspect() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = save(&dir, "t.png", &solid(100, 400, [0, 255, 0, 255]));
+        let img = decode_image(&p, 1000, 200).unwrap();
+        assert_eq!(img.dimensions(), (50, 200));
+    }
+
+    #[test]
+    fn image_dimensions_are_read_without_decoding_the_whole_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = save(&dir, "d.png", &solid(64, 32, [1, 2, 3, 255]));
+        // Keep the header, drop the pixel data: a full decode would fail.
+        let bytes = std::fs::read(&p).unwrap();
+        let cut = dir.path().join("cut.png");
+        std::fs::write(&cut, &bytes[..33.min(bytes.len())]).unwrap();
+        assert_eq!(image_size(&cut).unwrap(), (64, 32));
+        assert!(decode_image(&cut, 100, 100).is_err());
+    }
+
+    #[test]
+    fn missing_or_corrupt_file_returns_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope.png");
+        assert!(matches!(
+            decode_image(&missing, 100, 100),
+            Err(RasterError::NotFound)
+        ));
+        assert!(matches!(image_size(&missing), Err(RasterError::NotFound)));
+        let bad = dir.path().join("bad.png");
+        std::fs::write(&bad, b"definitely not a png").unwrap();
+        assert!(matches!(
+            decode_image(&bad, 100, 100),
+            Err(RasterError::NotFound)
+        ));
+        assert!(matches!(image_size(&bad), Err(RasterError::NotFound)));
     }
 }
