@@ -116,12 +116,46 @@ pub struct Start {
 }
 
 /// Decide root, sidebar visibility, tree and initial file for `target`.
-pub fn start(_target: &StartTarget) -> io::Result<Start> {
-    Ok(Start {
-        root: PathBuf::new(),
-        sidebar_visible: false,
-        tree: Vec::new(),
-        initial_file: None,
+pub fn start(target: &StartTarget) -> io::Result<Start> {
+    match target {
+        StartTarget::File(file) => {
+            let root = match file.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+                _ => PathBuf::from("."),
+            };
+            let tree = scan(&root)?;
+            Ok(Start {
+                root,
+                sidebar_visible: false,
+                tree,
+                initial_file: Some(file.clone()),
+            })
+        }
+        StartTarget::Directory(root) => {
+            let tree = scan(root)?;
+            // README.md is looked up among the root's own files only.
+            let readme = tree.iter().find_map(|n| match n {
+                Node::File { name, path } if name.eq_ignore_ascii_case("readme.md") => {
+                    Some(path.clone())
+                }
+                _ => None,
+            });
+            let initial_file = readme.or_else(|| first_file(&tree));
+            Ok(Start {
+                root: root.clone(),
+                sidebar_visible: true,
+                tree,
+                initial_file,
+            })
+        }
+    }
+}
+
+/// First file in depth-first tree order.
+fn first_file(nodes: &[Node]) -> Option<PathBuf> {
+    nodes.iter().find_map(|n| match n {
+        Node::File { path, .. } => Some(path.clone()),
+        Node::Dir { children, .. } => first_file(children),
     })
 }
 
