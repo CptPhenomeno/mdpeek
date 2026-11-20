@@ -7,8 +7,11 @@ use crate::theme;
 use unicode_width::UnicodeWidthChar;
 use wrap::{Piece, chunk, wrap};
 
+mod index;
 mod table;
 mod wrap;
+
+pub use index::{Focusable, Fragment, HeadingEntry, Index, TextBlock};
 
 #[cfg(test)]
 mod tests;
@@ -117,6 +120,7 @@ impl Row {
 pub struct Layout {
     pub state: State,
     pub rows: Vec<Row>,
+    pub index: Index,
 }
 
 /// Lay `doc` out for a pane `width` columns wide; `cell` is the cell size in pixels.
@@ -149,6 +153,7 @@ pub fn layout_with(
     let mut out = Layout {
         state,
         rows: Vec::new(),
+        index: Index::default(),
     };
     if state != State::Ready {
         return out;
