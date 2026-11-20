@@ -895,3 +895,5 @@ mod pictures {
         insta::assert_snapshot!(terminal.backend());
     }
 }
+
+mod focus;

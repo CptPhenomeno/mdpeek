@@ -12,6 +12,9 @@ pub enum Action {
     Top,
     Bottom,
     ToggleTextDiagrams,
+    FocusNext,
+    FocusPrev,
+    ClearFocus,
     Quit,
 }
 
@@ -95,6 +98,27 @@ pub const BINDINGS: &[Binding] = &[
         Action::Bottom,
         "End",
         "Bottom of the document",
+    ),
+    bind(
+        KeyCode::Tab,
+        NONE,
+        Action::FocusNext,
+        "Tab",
+        "Focus the next link or diagram",
+    ),
+    bind(
+        KeyCode::BackTab,
+        KeyModifiers::SHIFT,
+        Action::FocusPrev,
+        "Shift+Tab",
+        "Focus the previous link or diagram",
+    ),
+    bind(
+        KeyCode::Esc,
+        NONE,
+        Action::ClearFocus,
+        "Esc",
+        "Clear the focus",
     ),
     bind(
         KeyCode::Char('q'),

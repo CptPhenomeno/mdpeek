@@ -15,6 +15,7 @@ use crate::graphics::{PictureRequest, PictureSet};
 use crate::layout::{self, Diagrams, Layout, MARGIN, PictureKey, State};
 use crate::theme;
 
+mod focus;
 #[cfg(test)]
 mod tests;
 
@@ -53,6 +54,8 @@ pub struct App {
     overlays: Vec<Rect>,
     /// Diagrams are shown as text drawings (F8, `--text-diagrams`).
     text_mode: bool,
+    /// Focused link or diagram (SPEC §3.6.1).
+    focus: Option<focus::FocusId>,
     quit: bool,
 }
 
@@ -80,6 +83,7 @@ impl App {
             cell: CELL,
             overlays: Vec::new(),
             text_mode: false,
+            focus: None,
             quit: false,
         };
         app.relayout();
@@ -282,6 +286,9 @@ impl App {
                 self.set_text_mode(!self.text_mode);
                 return;
             }
+            Action::FocusNext => self.focus_step(true),
+            Action::FocusPrev => self.focus_step(false),
+            Action::ClearFocus => self.clear_focus(),
             Action::Quit => self.quit = true,
         }
         self.request_pictures();
