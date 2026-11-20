@@ -7,6 +7,7 @@ pub mod opener;
 pub mod overlay;
 pub mod pictures;
 pub mod terminal;
+pub mod view_worker;
 
 pub use app::App;
 pub use pictures::JobSink;

@@ -96,7 +96,13 @@ pub fn rasterise(svg: &str, max_w: u32, max_h: u32) -> Result<RgbaImage, RasterE
     let mut pm = tiny_skia::Pixmap::new(pw, ph).ok_or(RasterError::Size)?;
     let transform = tiny_skia::Transform::from_scale(pw as f32 / w, ph as f32 / h);
     resvg::render(&tree, transform, &mut pm.as_mut());
-    // tiny-skia pixels are premultiplied; the image crate expects straight alpha.
+    pixmap_image(pm)
+}
+
+/// Pixmap to straight-alpha image (tiny-skia pixels are premultiplied; the
+/// image crate expects straight alpha).
+fn pixmap_image(pm: tiny_skia::Pixmap) -> Result<RgbaImage, RasterError> {
+    let (pw, ph) = (pm.width(), pm.height());
     let mut data = pm.take();
     for px in data.as_chunks_mut::<4>().0 {
         let a = px[3] as u32;
@@ -107,6 +113,27 @@ pub fn rasterise(svg: &str, max_w: u32, max_h: u32) -> Result<RgbaImage, RasterE
         }
     }
     RgbaImage::from_raw(pw, ph, data).ok_or(RasterError::Size)
+}
+
+/// Rasterise only the region whose top-left corner is `origin` (natural pixels) at `scale` into a
+/// `px` sized bitmap, so the memory is bounded by the screen at any zoom
+/// (SPEC §4.20). Drawn from the vector source: nothing is upscaled.
+pub fn rasterise_region(
+    svg: &str,
+    origin: (f64, f64),
+    scale: f64,
+    px: (u32, u32),
+) -> Result<RgbaImage, RasterError> {
+    let tree = parse(svg)?;
+    if px.0 == 0 || px.1 == 0 || scale.is_nan() || scale <= 0.0 {
+        return Err(RasterError::Size);
+    }
+    let mut pm = tiny_skia::Pixmap::new(px.0, px.1).ok_or(RasterError::Size)?;
+    let s = scale as f32;
+    let transform = tiny_skia::Transform::from_scale(s, s)
+        .post_translate(-(origin.0 as f32) * s, -(origin.1 as f32) * s);
+    resvg::render(&tree, transform, &mut pm.as_mut());
+    pixmap_image(pm)
 }
 
 fn is_svg(path: &Path, head: &[u8]) -> bool {

@@ -898,3 +898,4 @@ mod pictures {
 
 mod activate;
 mod focus;
+mod fullscreen;

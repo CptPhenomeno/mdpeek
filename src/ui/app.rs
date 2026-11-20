@@ -17,6 +17,7 @@ use crate::theme;
 
 mod activate;
 mod focus;
+mod fullscreen;
 #[cfg(test)]
 mod tests;
 
@@ -299,6 +300,7 @@ impl App {
             Action::ClearFocus => self.clear_focus(),
             Action::Activate => self.activate(),
             Action::Quit => self.quit = true,
+            _ => {}
         }
         self.request_pictures();
     }
