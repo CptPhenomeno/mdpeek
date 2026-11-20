@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod keymap;
+pub mod overlay;
 pub mod terminal;
 
 pub use app::App;

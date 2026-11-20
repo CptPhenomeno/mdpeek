@@ -11,13 +11,14 @@ use unicode_width::UnicodeWidthStr;
 
 use super::keymap::{Action, action_for};
 use crate::doc::Document;
-use crate::layout::{self, Layout, MARGIN, State};
+use crate::graphics::{PictureRequest, PictureSet};
+use crate::layout::{self, Layout, MARGIN, PictureKey, State};
 use crate::theme;
 
 #[cfg(test)]
 mod tests;
 
-/// Cell size in pixels until the terminal is queried (pictures come later).
+/// Cell size in pixels until the terminal is queried.
 const CELL: (u16, u16) = (10, 20);
 /// Rows a mouse wheel notch scrolls (SPEC §3.8).
 const WHEEL_ROWS: usize = 3;
@@ -39,6 +40,11 @@ pub struct App {
     message: Option<String>,
     /// Whether the document pane has the focus (the sidebar arrives later).
     focused: bool,
+    pictures: PictureSet,
+    /// Cell size in pixels, as the terminal reports it.
+    cell: (u16, u16),
+    /// Open overlays (popups): pictures leave them uncovered.
+    overlays: Vec<Rect>,
     quit: bool,
 }
 
@@ -58,6 +64,9 @@ impl App {
             scroll: 0,
             message,
             focused: true,
+            pictures: PictureSet::placeholder('#'),
+            cell: CELL,
+            overlays: Vec::new(),
             quit: false,
         };
         app.relayout();
@@ -70,8 +79,10 @@ impl App {
             return;
         }
         let width_changed = self.pane_width_of(self.size.0) != self.pane_width_of(width);
+        // Picture slots are fitted to the pane height.
+        let height_changed = self.size.1 != height;
         self.size = (width, height);
-        if width_changed {
+        if width_changed || (height_changed && self.layout.rows.iter().any(|r| r.slot.is_some())) {
             let anchor = self.top_anchor();
             self.relayout();
             self.scroll = anchor.map_or(0, |a| self.scroll_of(a));
@@ -103,6 +114,37 @@ impl App {
     /// Show `message` in the status bar until the next key press.
     pub fn set_message(&mut self, message: impl Into<String>) {
         self.message = Some(message.into());
+    }
+
+    /// Replace the picture set (renderer choice) and lay out again.
+    pub fn set_pictures(&mut self, pictures: PictureSet) {
+        self.pictures = pictures;
+        self.relayout_keeping_position();
+    }
+
+    /// Cell size in pixels (from terminal detection); slots are sized with it.
+    pub fn set_cell(&mut self, cell: (u16, u16)) {
+        self.cell = cell;
+        self.relayout_keeping_position();
+    }
+
+    /// Hand a decoded picture to the pane: slots are laid out at its size.
+    pub fn add_picture(&mut self, key: PictureKey, img: image::DynamicImage) {
+        self.pictures.insert(key, img);
+        self.relayout_keeping_position();
+    }
+
+    /// Rectangles of open overlays; pictures never draw under them.
+    pub fn set_overlays(&mut self, overlays: Vec<Rect>) {
+        self.overlays = overlays;
+    }
+
+    fn relayout_keeping_position(&mut self) {
+        let anchor = self.top_anchor();
+        self.relayout();
+        self.scroll = anchor
+            .map_or(0, |a| self.scroll_of(a))
+            .min(self.max_scroll());
     }
 
     pub fn should_quit(&self) -> bool {
@@ -157,7 +199,40 @@ impl App {
         let inner = block.inner(pane);
         frame.render_widget(block, pane);
         frame.render_widget(Paragraph::new(self.pane_lines(inner.height)), inner);
+        self.draw_pictures(inner, frame.buffer_mut());
         frame.render_widget(Paragraph::new(self.status_line(status.width)), status);
+    }
+
+    /// Draws the pictures whose slots touch the viewport, clipped to `pane`.
+    fn draw_pictures(&mut self, pane: Rect, buf: &mut ratatui::buffer::Buffer) {
+        if self.layout.state != State::Ready {
+            return;
+        }
+        // A slot is at most one pane tall, so it starts within a pane height above.
+        let height = usize::from(pane.height);
+        let first = self.scroll.saturating_sub(height);
+        let last = (self.scroll + height).min(self.layout.rows.len());
+        for index in first..last {
+            let Some(slot) = self.layout.rows[index].slot.as_ref() else {
+                continue;
+            };
+            let slot_rows = usize::from(slot.rows);
+            if !slot.known || index + slot_rows <= self.scroll {
+                continue;
+            }
+            let (Ok(row), Ok(scroll)) = (i32::try_from(index), i32::try_from(self.scroll)) else {
+                continue;
+            };
+            let request = PictureRequest {
+                pane,
+                slot_top: i32::from(pane.y) + row - scroll,
+                slot_left: pane.x.saturating_add(MARGIN).saturating_add(slot.left),
+                slot_cols: slot.cols,
+                slot_rows: slot.rows,
+                overlays: &self.overlays,
+            };
+            self.pictures.draw(slot, &request, buf);
+        }
     }
 
     fn pane_width_of(&self, terminal_width: u16) -> u16 {
@@ -165,7 +240,13 @@ impl App {
     }
 
     fn relayout(&mut self) {
-        self.layout = layout::layout(&self.doc, self.pane_width_of(self.size.0), CELL);
+        self.layout = layout::layout_with(
+            &self.doc,
+            self.pane_width_of(self.size.0),
+            self.viewport_height().try_into().unwrap_or(u16::MAX),
+            self.cell,
+            &self.pictures,
+        );
     }
 
     fn first_row_of(&self, block: usize) -> Option<usize> {

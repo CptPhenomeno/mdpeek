@@ -3,7 +3,8 @@
 //! Spike (KB-7): the geometry is pure and testable; the renderers draw into a
 //! ratatui `Buffer` so that every protocol is checked the same way.
 
-use image::{DynamicImage, Rgba, RgbaImage};
+use crate::layout::{PictureKey, PictureSizes, Slot};
+use image::{DynamicImage, Rgba, RgbaImage, imageops::FilterType};
 use ratatui::{
     buffer::Buffer,
     layout::{Rect, Size},
@@ -14,6 +15,7 @@ use ratatui_image::{
     picker::Picker,
     sliced::{SignedPosition, SlicedImage, SlicedProtocol},
 };
+use std::collections::HashMap;
 
 /// The part of an image slot that intersects the document pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -231,6 +233,115 @@ impl PictureRenderer for SlicedRenderer {
     }
 }
 
+/// How pictures are turned into renderers.
+enum Backend {
+    /// Marker symbol per visible cell; no pixels (snapshot tests).
+    Placeholder(char),
+    /// Real terminal graphics through `ratatui-image`.
+    Sliced { picker: Picker, bg: Rgba<u8> },
+}
+
+/// A decoded picture and its encoding for the current slot size.
+struct Entry {
+    img: DynamicImage,
+    encoded: Option<((u32, u32), Box<dyn PictureRenderer>)>,
+}
+
+/// Decoded pictures keyed by [`PictureKey`]. Each is encoded once per slot
+/// size (lazily, on first draw) and then only sliced per frame, so scrolling
+/// never re-encodes. Pictures arrive through [`PictureSet::insert`] already
+/// decoded (the raster and worker stages feed it).
+pub struct PictureSet {
+    backend: Backend,
+    items: HashMap<PictureKey, Entry>,
+    encodes: usize,
+}
+
+impl std::fmt::Debug for PictureSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PictureSet")
+            .field("pictures", &self.items.len())
+            .field("encodes", &self.encodes)
+            .finish()
+    }
+}
+
+impl PictureSet {
+    fn with(backend: Backend) -> Self {
+        Self {
+            backend,
+            items: HashMap::new(),
+            encodes: 0,
+        }
+    }
+
+    /// Draws `symbol` over the visible cells of each picture.
+    pub fn placeholder(symbol: char) -> Self {
+        Self::with(Backend::Placeholder(symbol))
+    }
+
+    /// Draws real graphics with the protocol of `picker`; transparent pixels
+    /// are composited over `bg` (SPEC §4.2).
+    pub fn sliced(picker: Picker, bg: Rgba<u8>) -> Self {
+        Self::with(Backend::Sliced { picker, bg })
+    }
+
+    /// Adds or replaces the picture of `key`; its encoding is dropped.
+    pub fn insert(&mut self, key: PictureKey, img: DynamicImage) {
+        self.items.insert(key, Entry { img, encoded: None });
+    }
+
+    /// Forgets the picture of `key`.
+    pub fn remove(&mut self, key: &PictureKey) {
+        self.items.remove(key);
+    }
+
+    /// How many encodes happened so far (a test and diagnostics hook).
+    pub fn encode_count(&self) -> usize {
+        self.encodes
+    }
+
+    /// Draws the picture of `slot` as `request` describes, clipped to the pane.
+    /// Does nothing for a picture that was not inserted or cannot be encoded.
+    pub fn draw(&mut self, slot: &Slot, request: &PictureRequest<'_>, buf: &mut Buffer) {
+        let Some(entry) = self.items.get_mut(&slot.key) else {
+            return;
+        };
+        if entry.encoded.as_ref().is_none_or(|(px, _)| *px != slot.px) {
+            let renderer: Option<Box<dyn PictureRenderer>> = match &self.backend {
+                Backend::Placeholder(symbol) => {
+                    Some(Box::new(PlaceholderRenderer { symbol: *symbol }))
+                }
+                Backend::Sliced { picker, bg } => {
+                    let img = if (entry.img.width(), entry.img.height()) == slot.px {
+                        entry.img.clone()
+                    } else {
+                        entry.img.resize_exact(
+                            slot.px.0.max(1),
+                            slot.px.1.max(1),
+                            FilterType::Triangle,
+                        )
+                    };
+                    SlicedRenderer::new(picker, img, *bg)
+                        .ok()
+                        .map(|r| Box::new(r) as Box<dyn PictureRenderer>)
+                }
+            };
+            self.encodes += 1;
+            entry.encoded = renderer.map(|r| (slot.px, r));
+        }
+        if let Some((_, renderer)) = entry.encoded.as_mut() {
+            renderer.render(request, buf);
+        }
+    }
+}
+
+impl PictureSizes for PictureSet {
+    fn natural_size(&self, key: &PictureKey) -> Option<(u32, u32)> {
+        self.items.get(key).map(|e| (e.img.width(), e.img.height()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,5 +452,48 @@ mod tests {
         // pieces never overlap each other
         let total: u32 = pieces.iter().map(|r| r.area()).sum();
         assert_eq!(total, 8 * 6 - 4 * 2);
+    }
+
+    fn slot(px: (u32, u32)) -> Slot {
+        Slot {
+            key: PictureKey::Diagram(0),
+            cols: 4,
+            rows: 4,
+            px,
+            left: 0,
+            known: true,
+        }
+    }
+
+    #[test]
+    fn scrolling_a_picture_encodes_it_once_per_slot_size() {
+        let mut set = PictureSet::placeholder('#');
+        set.insert(
+            PictureKey::Diagram(0),
+            DynamicImage::ImageRgba8(RgbaImage::new(80, 160)),
+        );
+        let mut buf = Buffer::empty(Rect::new(0, 0, 80, 12));
+        for top in [3, 2, 1, 0, -1, -2] {
+            let request = PictureRequest {
+                pane: pane(),
+                slot_top: top,
+                slot_left: 30,
+                slot_cols: 4,
+                slot_rows: 4,
+                overlays: &[],
+            };
+            set.draw(&slot((40, 80)), &request, &mut buf);
+        }
+        assert_eq!(set.encode_count(), 1);
+        let request = PictureRequest {
+            pane: pane(),
+            slot_top: 3,
+            slot_left: 30,
+            slot_cols: 2,
+            slot_rows: 2,
+            overlays: &[],
+        };
+        set.draw(&slot((20, 40)), &request, &mut buf);
+        assert_eq!(set.encode_count(), 2);
     }
 }
