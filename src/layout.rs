@@ -7,6 +7,7 @@ use crate::theme;
 use unicode_width::UnicodeWidthChar;
 use wrap::{Piece, chunk, wrap};
 
+mod code;
 mod index;
 mod table;
 mod wrap;
@@ -590,8 +591,13 @@ fn block_rows(block: &Block, index: usize, content: usize, cx: &Ctx) -> Vec<Row>
         Block::Table(t) => table::rows(t, index, content, &cx.units),
         Block::List(list) => list_rows(list, index, content, cx),
         Block::BlockQuote(blocks) => quote_rows(blocks, index, content, cx),
-        // Code is laid out by a later stage.
-        _ => Vec::new(),
+        Block::CodeBlock { lang, text } => {
+            let mut rows = code::rows(lang.as_deref(), text, index, content, &cx.units);
+            for row in &mut rows {
+                clip(row, content);
+            }
+            rows
+        }
     }
 }
 

@@ -111,6 +111,21 @@ pub fn inline(base: Style, style: InlineStyle, linked: bool) -> Style {
     out
 }
 
+/// Code box text: body foreground on the code background.
+pub fn code() -> Style {
+    Style::new().fg(FG).bg(CODE_BG)
+}
+
+/// Code box border, drawn on the code background.
+pub fn code_border() -> Style {
+    Style::new().fg(LINE).bg(CODE_BG)
+}
+
+/// Language label and truncation ellipsis of a code box.
+pub fn code_label() -> Style {
+    Style::new().fg(MUTED).bg(CODE_BG)
+}
+
 #[cfg(test)]
 mod bg_tests {
     use super::*;
