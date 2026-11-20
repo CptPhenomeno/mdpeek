@@ -27,6 +27,8 @@ pub struct DetectError(pub String);
 /// Queries the terminal; must run once raw mode and the alternate screen are on.
 pub trait Detector {
     fn detect(&self) -> Result<Detection, DetectError>;
+    /// Cell size in pixels from the window size, without querying protocols.
+    fn cell_size(&self) -> Option<(u16, u16)>;
 }
 
 /// The protocol and cell size pictures are encoded and laid out with.
@@ -92,6 +94,10 @@ impl Selection {
 pub struct StdioDetector;
 
 impl Detector for StdioDetector {
+    fn cell_size(&self) -> Option<(u16, u16)> {
+        None
+    }
+
     fn detect(&self) -> Result<Detection, DetectError> {
         let picker = Picker::from_query_stdio().map_err(|e| DetectError(e.to_string()))?;
         let font = picker.font_size();
@@ -111,6 +117,7 @@ mod tests {
     struct Fake {
         result: Result<Detection, DetectError>,
         calls: Cell<u32>,
+        window_cell: Option<(u16, u16)>,
     }
 
     impl Fake {
@@ -118,6 +125,7 @@ mod tests {
             Self {
                 result,
                 calls: Cell::new(0),
+                window_cell: None,
             }
         }
     }
@@ -126,6 +134,9 @@ mod tests {
         fn detect(&self) -> Result<Detection, DetectError> {
             self.calls.set(self.calls.get() + 1);
             self.result.clone()
+        }
+        fn cell_size(&self) -> Option<(u16, u16)> {
+            self.window_cell
         }
     }
 
@@ -147,6 +158,17 @@ mod tests {
             assert_eq!(sel.protocol, expected);
             assert_eq!(det.calls.get(), 0, "{choice:?} must not query the terminal");
         }
+    }
+
+    #[test]
+    fn forced_protocol_uses_reported_cell_size() {
+        let mut det = found(ProtocolType::Halfblocks, None);
+        det.window_cell = Some((9, 19));
+        let sel = select(ProtocolChoice::Sixel, &det);
+        assert_eq!(sel.cell, (9, 19));
+        assert_eq!(det.calls.get(), 0);
+        let det = found(ProtocolType::Halfblocks, None);
+        assert_eq!(select(ProtocolChoice::Sixel, &det).cell, DEFAULT_CELL);
     }
 
     #[test]
