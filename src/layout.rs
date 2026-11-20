@@ -42,6 +42,8 @@ pub enum RowKind {
     Rule,
     /// A line of a table: border or cells.
     Table,
+    /// A line of a code block box: border, label or code.
+    Code,
     /// Spacing between blocks.
     Blank,
     /// A row reserved for a picture; no text is drawn over it. Only the first

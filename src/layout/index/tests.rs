@@ -159,3 +159,25 @@ fn index_rows_change_when_the_layout_is_recomputed_for_another_width() {
     assert_eq!(wide.index.texts[1].fragments(0..4).len(), 1);
     assert_eq!(narrow.index.headings.len(), wide.index.headings.len());
 }
+
+#[test]
+fn code_block_lines_are_included_in_the_layout_s_search_index_and_map_back_to_their_rows() {
+    let l = lay("para\n\n```rust\nfn a() {}\n\nlet b = 1;\n```", 40);
+    let texts: Vec<&str> = l.index.texts.iter().map(|t| t.text.as_str()).collect();
+    assert_eq!(texts, ["para", "fn a() {}", "let b = 1;"]);
+    for (t, line) in l.index.texts[1..].iter().zip(["fn a() {}", "let b = 1;"]) {
+        let row = l.rows.iter().position(|r| r.text().contains(line)).unwrap();
+        let at = t.text.find(&line[3..6]).unwrap();
+        assert_eq!(
+            t.fragments(at..at + 3),
+            [Fragment {
+                row,
+                start: 5,
+                end: 8
+            }]
+        );
+    }
+    // a truncated line indexes only what is on screen
+    let l = lay(&format!("```\n{}\n```", "q".repeat(60)), 20);
+    assert_eq!(l.index.texts[0].text, format!("{}…", "q".repeat(13)));
+}
