@@ -1,0 +1,317 @@
+//! Zoom and pan state of the full-screen diagram view (SPEC §3.6.3).
+//!
+//! Pure logic, no terminal. Coordinates are the picture's natural pixels
+//! (SVG user units); the screen is measured in device pixels.
+
+/// Maximum zoom relative to fit.
+pub const MAX_ZOOM: f64 = 8.0;
+/// Multiplier of one zoom step.
+pub const ZOOM_STEP: f64 = 1.25;
+/// Fraction of the visible area moved by one pan.
+pub const PAN_FRACTION: f64 = 0.10;
+
+/// A pan direction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PanDir {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+/// A rectangle in the picture's natural pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SourceRect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// Zoom and pan state for one picture on one screen area.
+#[derive(Clone, Debug)]
+pub struct ZoomState {
+    natural: (f64, f64),
+    screen: (f64, f64),
+    zoom: f64,
+    center: (f64, f64),
+}
+
+impl ZoomState {
+    /// New state at fit, centred. `natural` and `screen` are in pixels.
+    pub fn new(natural: (f64, f64), screen: (f64, f64)) -> Self {
+        Self {
+            natural,
+            screen,
+            zoom: 0.0,
+            center: (0.0, 0.0),
+        }
+    }
+
+    /// The screen area changed: keep the zoom and the centre, re-clamp.
+    pub fn resize(&mut self, _screen: (f64, f64)) {}
+
+    pub fn zoom_in(&mut self) {}
+    pub fn zoom_out(&mut self) {}
+    pub fn reset(&mut self) {}
+    pub fn pan(&mut self, _dir: PanDir) {}
+
+    /// Scale from natural size to screen pixels at the current zoom.
+    pub fn scale(&self) -> f64 {
+        0.0
+    }
+
+    /// Scale at 100%: fit to screen, never above natural size.
+    pub fn fit_scale(&self) -> f64 {
+        0.0
+    }
+
+    /// Zoom percentage relative to fit, for the status bar.
+    pub fn percent(&self) -> u32 {
+        0
+    }
+
+    /// Region of the picture to rasterise, in natural pixels.
+    pub fn source_rect(&self) -> SourceRect {
+        SourceRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+        }
+    }
+
+    /// Size in screen pixels of the rasterised region (it is centred on
+    /// the screen when smaller than it).
+    pub fn dest_size(&self) -> (f64, f64) {
+        (0.0, 0.0)
+    }
+
+    /// Viewport centre in natural pixels.
+    pub fn center(&self) -> (f64, f64) {
+        self.center
+    }
+
+    /// Whether the picture exceeds the screen on the horizontal axis.
+    pub fn can_pan_x(&self) -> bool {
+        false
+    }
+
+    /// Whether the picture exceeds the screen on the vertical axis.
+    pub fn can_pan_y(&self) -> bool {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EPS: f64 = 1e-6;
+
+    /// 1000x500 picture on a 500x500 screen: fit scale 0.5.
+    fn wide() -> ZoomState {
+        ZoomState::new((1000.0, 500.0), (500.0, 500.0))
+    }
+
+    fn zoomed(n: usize) -> ZoomState {
+        let mut s = wide();
+        for _ in 0..n {
+            s.zoom_in();
+        }
+        s
+    }
+
+    #[test]
+    fn zoom_in_steps_by_1_25_up_to_8_times_fit() {
+        let mut s = wide();
+        assert!((s.fit_scale() - 0.5).abs() < EPS);
+        s.zoom_in();
+        assert!((s.scale() - 0.5 * 1.25).abs() < EPS);
+        assert_eq!(s.percent(), 125);
+        for _ in 0..30 {
+            s.zoom_in();
+        }
+        assert!((s.scale() - 4.0).abs() < EPS);
+        assert_eq!(s.percent(), 800);
+    }
+
+    #[test]
+    fn zoom_out_steps_down_to_fit() {
+        let mut s = zoomed(3);
+        s.zoom_out();
+        assert!((s.scale() - 0.5 * 1.25 * 1.25).abs() < EPS);
+        for _ in 0..10 {
+            s.zoom_out();
+        }
+        assert!((s.scale() - 0.5).abs() < EPS);
+        assert_eq!(s.percent(), 100);
+    }
+
+    #[test]
+    fn reset_returns_to_fit_and_centre() {
+        let mut s = zoomed(5);
+        s.pan(PanDir::Right);
+        s.reset();
+        assert_eq!(s.percent(), 100);
+        assert_eq!(s.center(), (500.0, 250.0));
+    }
+
+    #[test]
+    fn arrows_pan_by_ten_percent_of_visible_area() {
+        let mut s = zoomed(10); // 800%: scale 4, visible 125x125 natural
+        let r = s.source_rect();
+        assert!((r.w - 125.0).abs() < EPS && (r.h - 125.0).abs() < EPS);
+        let (cx, cy) = s.center();
+        s.pan(PanDir::Right);
+        assert!((s.center().0 - (cx + 12.5)).abs() < EPS);
+        s.pan(PanDir::Down);
+        assert!((s.center().1 - (cy + 12.5)).abs() < EPS);
+        s.pan(PanDir::Left);
+        s.pan(PanDir::Left);
+        assert!((s.center().0 - (cx - 12.5)).abs() < EPS);
+        s.pan(PanDir::Up);
+        s.pan(PanDir::Up);
+        assert!((s.center().1 - (cy - 12.5)).abs() < EPS);
+    }
+
+    #[test]
+    fn arrows_do_nothing_while_picture_fits() {
+        let mut s = wide();
+        let before = s.center();
+        for d in [PanDir::Left, PanDir::Right, PanDir::Up, PanDir::Down] {
+            s.pan(d);
+        }
+        assert_eq!(s.center(), before);
+        assert_eq!(before, (500.0, 250.0));
+    }
+
+    #[test]
+    fn pan_only_on_axes_that_exceed_the_screen() {
+        // 1000x500 at 125%: scaled 625x312 on 500x500: only x exceeds.
+        let mut s = zoomed(1);
+        assert!(s.can_pan_x() && !s.can_pan_y());
+        let cy = s.center().1;
+        s.pan(PanDir::Down);
+        assert_eq!(s.center().1, cy);
+        let cx = s.center().0;
+        s.pan(PanDir::Right);
+        assert!(s.center().0 > cx);
+    }
+
+    #[test]
+    fn pan_offset_is_clamped_to_picture_edges() {
+        let mut s = zoomed(10);
+        for _ in 0..200 {
+            s.pan(PanDir::Left);
+            s.pan(PanDir::Up);
+        }
+        let r = s.source_rect();
+        assert!(r.x.abs() < EPS && r.y.abs() < EPS);
+        for _ in 0..400 {
+            s.pan(PanDir::Right);
+            s.pan(PanDir::Down);
+        }
+        let r = s.source_rect();
+        assert!((r.x + r.w - 1000.0).abs() < EPS);
+        assert!((r.y + r.h - 500.0).abs() < EPS);
+    }
+
+    #[test]
+    fn zoom_keeps_the_viewport_centre() {
+        let mut s = zoomed(10);
+        for _ in 0..20 {
+            s.pan(PanDir::Left);
+        }
+        let c = s.center();
+        s.zoom_out();
+        assert_eq!(s.center(), c);
+        let r = s.source_rect();
+        assert!((r.x + r.w / 2.0 - c.0).abs() < EPS);
+    }
+
+    #[test]
+    fn zoom_out_reclamps_centre_near_an_edge() {
+        let mut s = zoomed(10);
+        for _ in 0..400 {
+            s.pan(PanDir::Right);
+        }
+        s.zoom_out();
+        let r = s.source_rect();
+        assert!(r.x + r.w <= 1000.0 + EPS);
+        s.reset();
+        assert_eq!(s.center(), (500.0, 250.0));
+    }
+
+    #[test]
+    fn percent_is_relative_to_fit_not_natural_size() {
+        // Same zoom, different fit scales: same percentage.
+        let mut a = ZoomState::new((1000.0, 500.0), (500.0, 500.0));
+        let mut b = ZoomState::new((4000.0, 2000.0), (500.0, 500.0));
+        for _ in 0..4 {
+            a.zoom_in();
+            b.zoom_in();
+        }
+        assert_eq!(a.percent(), b.percent());
+        assert_eq!(a.percent(), 244); // 1.25^4 = 2.4414
+        assert_eq!(ZoomState::new((10.0, 10.0), (500.0, 500.0)).percent(), 100);
+    }
+
+    #[test]
+    fn small_picture_fits_at_natural_size_never_upscaled() {
+        let mut s = ZoomState::new((100.0, 50.0), (500.0, 500.0));
+        assert!((s.fit_scale() - 1.0).abs() < EPS);
+        assert_eq!(s.percent(), 100);
+        assert_eq!(s.dest_size(), (100.0, 50.0));
+        let r = s.source_rect();
+        assert_eq!((r.x, r.y, r.w, r.h), (0.0, 0.0, 100.0, 50.0));
+        for d in [PanDir::Left, PanDir::Right, PanDir::Up, PanDir::Down] {
+            s.pan(d);
+        }
+        assert_eq!(s.center(), (50.0, 25.0));
+        // Zoom still works up to x8 of natural size.
+        for _ in 0..30 {
+            s.zoom_in();
+        }
+        assert!((s.scale() - 8.0).abs() < EPS);
+    }
+
+    #[test]
+    fn dest_size_is_screen_sized_when_zoomed_beyond_it() {
+        assert_eq!(wide().dest_size(), (500.0, 250.0));
+        assert_eq!(zoomed(10).dest_size(), (500.0, 500.0));
+    }
+
+    #[test]
+    fn max_zoom_is_exact_despite_float_rounding() {
+        let mut s = wide();
+        for _ in 0..50 {
+            s.zoom_in();
+        }
+        assert_eq!(s.percent(), 800);
+        assert_eq!(s.scale(), 0.5 * MAX_ZOOM);
+        for _ in 0..50 {
+            s.zoom_out();
+        }
+        assert_eq!(s.percent(), 100);
+        assert_eq!(s.scale(), 0.5);
+    }
+
+    #[test]
+    fn resize_keeps_zoom_and_reclamps() {
+        let mut s = zoomed(10);
+        for _ in 0..400 {
+            s.pan(PanDir::Right);
+        }
+        s.resize((250.0, 250.0)); // fit scale becomes 0.25
+        assert_eq!(s.percent(), 800);
+        assert!((s.scale() - 2.0).abs() < EPS);
+        let r = s.source_rect();
+        assert!((r.w - 125.0).abs() < EPS);
+        assert!(r.x + r.w <= 1000.0 + EPS);
+        // A bigger screen than the zoomed picture: centred again.
+        s.resize((4000.0, 4000.0));
+        assert_eq!(s.center(), (500.0, 250.0));
+        assert_eq!(s.source_rect().w, 1000.0);
+    }
+}
