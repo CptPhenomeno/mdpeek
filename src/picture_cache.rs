@@ -4,10 +4,14 @@
 //! pixels, one level below `graphics::PictureSet`, which caches encoded
 //! terminal protocols.
 
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::UNIX_EPOCH;
 
 use image::RgbaImage;
+
+use crate::diagram::source_hash;
 
 /// Default limit on stored pixel data: 256 MB (SPEC §4.13).
 pub const DEFAULT_LIMIT_BYTES: usize = 256 * 1024 * 1024;
@@ -19,46 +23,143 @@ pub struct CacheKey {
     pub height: u32,
 }
 
-/// Thread-safe, cheaply cloneable handle to one shared cache.
+struct Entry {
+    image: Arc<RgbaImage>,
+    last_used: u64,
+}
+
+struct Inner {
+    limit: usize,
+    bytes: usize,
+    tick: u64,
+    map: HashMap<CacheKey, Entry>,
+}
+
+fn cost(img: &RgbaImage) -> usize {
+    img.width() as usize * img.height() as usize * 4
+}
+
+/// Thread-safe, cheaply cloneable handle to one shared cache. Values are
+/// `Arc<RgbaImage>` so readers never copy pixel data. Eviction is
+/// least-recently-used once the stored bytes (width x height x 4) exceed the
+/// limit; both `get` and `insert` count as a use.
 #[derive(Clone)]
 pub struct PictureCache {
-    _inner: Arc<Mutex<()>>,
+    inner: Arc<Mutex<Inner>>,
 }
 
 impl PictureCache {
-    pub fn new(_limit_bytes: usize) -> Self {
-        todo!()
+    pub fn new(limit_bytes: usize) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(Inner {
+                limit: limit_bytes,
+                bytes: 0,
+                tick: 0,
+                map: HashMap::new(),
+            })),
+        }
     }
+
     pub fn with_default_limit() -> Self {
-        todo!()
+        Self::new(DEFAULT_LIMIT_BYTES)
     }
-    pub fn get(&self, _key: &CacheKey) -> Option<Arc<RgbaImage>> {
-        todo!()
+
+    fn lock(&self) -> MutexGuard<'_, Inner> {
+        // The cache holds no invariant a panicking holder could break halfway
+        // that matters more than staying usable, so recover from poisoning.
+        self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
-    pub fn insert(&self, _key: CacheKey, _img: RgbaImage) -> Arc<RgbaImage> {
-        todo!()
+
+    /// Looks up a picture and marks it most recently used.
+    pub fn get(&self, key: &CacheKey) -> Option<Arc<RgbaImage>> {
+        let mut g = self.lock();
+        g.tick += 1;
+        let tick = g.tick;
+        let e = g.map.get_mut(key)?;
+        e.last_used = tick;
+        Some(Arc::clone(&e.image))
     }
+
+    /// Stores a picture and returns the shared handle. A picture larger than
+    /// the whole limit is returned but not cached, and evicts nothing.
+    pub fn insert(&self, key: CacheKey, img: RgbaImage) -> Arc<RgbaImage> {
+        let size = cost(&img);
+        let image = Arc::new(img);
+        let mut g = self.lock();
+        if let Some(old) = g.map.remove(&key) {
+            g.bytes -= cost(&old.image);
+        }
+        if size > g.limit {
+            return image;
+        }
+        g.tick += 1;
+        let last_used = g.tick;
+        g.bytes += size;
+        g.map.insert(
+            key,
+            Entry {
+                image: Arc::clone(&image),
+                last_used,
+            },
+        );
+        while g.bytes > g.limit {
+            let Some(oldest) = g
+                .map
+                .iter()
+                .min_by_key(|(_, e)| e.last_used)
+                .map(|(k, _)| *k)
+            else {
+                break;
+            };
+            if let Some(e) = g.map.remove(&oldest) {
+                g.bytes -= cost(&e.image);
+            }
+        }
+        image
+    }
+
+    /// Returns the cached picture, or renders, stores and returns it. The
+    /// lock is not held while rendering.
     pub fn get_or_render<E>(
         &self,
-        _key: CacheKey,
-        _render: impl FnOnce() -> Result<RgbaImage, E>,
+        key: CacheKey,
+        render: impl FnOnce() -> Result<RgbaImage, E>,
     ) -> Result<Arc<RgbaImage>, E> {
-        todo!()
+        if let Some(hit) = self.get(&key) {
+            return Ok(hit);
+        }
+        Ok(self.insert(key, render()?))
     }
+
     pub fn len(&self) -> usize {
-        todo!()
+        self.lock().map.len()
     }
+
     pub fn is_empty(&self) -> bool {
-        todo!()
+        self.len() == 0
     }
+
+    /// Total pixel bytes currently stored.
     pub fn bytes(&self) -> usize {
-        todo!()
+        self.lock().bytes
     }
 }
 
-/// Source hash of a local image: changes when path, mtime or size change.
-pub fn image_source_hash(_path: &Path) -> Option<u64> {
-    todo!()
+/// Source hash of a local image: FNV-1a (`source_hash`) of path, modification
+/// time and byte size, so editing or replacing the file is a miss without
+/// reading its content. `None` if the file cannot be stat-ed.
+pub fn image_source_hash(path: &Path) -> Option<u64> {
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_nanos());
+    Some(source_hash(&format!(
+        "{}\0{mtime}\0{}",
+        path.to_string_lossy(),
+        meta.len()
+    )))
 }
 
 #[cfg(test)]
