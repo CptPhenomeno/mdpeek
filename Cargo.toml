@@ -11,7 +11,7 @@ clap = { version = "4.6.8", features = ["derive"] }
 crossterm = "0.29.0"
 ignore = "0.4.34"
 image = "0.25.10"
-merman = { version = "0.10.0", default-features = false, features = ["svg", "layout-cytoscape", "ascii", "diagram-flowchart", "diagram-sequence", "diagram-class", "diagram-gantt", "diagram-mindmap", "diagram-state", "diagram-pie"] }
+merman = { version = "0.10.0", default-features = false, features = ["svg", "native-fonts", "layout-cytoscape", "ascii", "diagram-flowchart", "diagram-sequence", "diagram-class", "diagram-gantt", "diagram-mindmap", "diagram-state", "diagram-pie"] }
 open = "5.4.5"
 pulldown-cmark = "0.13.6"
 ratatui = "0.30.2"

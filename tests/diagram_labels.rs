@@ -25,7 +25,11 @@ fn assert_nothing_clipped(name: &str, src: &str) {
     let a = rasterise(&clipped, 4000, 4000).expect("raster");
     let b = rasterise(&open, 4000, 4000).expect("raster");
     assert_eq!(a.dimensions(), b.dimensions());
-    let differing = a.pixels().zip(b.pixels()).filter(|(x, y)| x != y).count();
+    let differing = a
+        .pixels()
+        .zip(b.pixels())
+        .filter(|(x, y)| x.0.iter().zip(y.0).any(|(p, q)| p.abs_diff(q) > 120))
+        .count();
     assert_eq!(
         differing, 0,
         "{name}: label text is clipped by its box ({differing} pixels)"

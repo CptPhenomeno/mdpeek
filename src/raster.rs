@@ -41,6 +41,10 @@ fn fontdb() -> Arc<usvg::fontdb::Database> {
     DB.get_or_init(|| {
         let mut db = usvg::fontdb::Database::new();
         db.load_system_fonts();
+        // The faces diagrams are measured with (see `diagram::FONT_FAMILY`).
+        for face in crate::diagram::FONT_FACES {
+            db.load_font_data(face.to_vec());
+        }
         Arc::new(db)
     })
     .clone()

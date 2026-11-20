@@ -9,9 +9,11 @@
 //! diagram with its own `%%{init}%%` directive still renders (and may override the theme).
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::OnceLock;
 
 use merman::ascii::{AsciiRenderOptions, AsciiViewportPolicy, OverflowPolicy};
-use merman::svg::SvgPipeline;
+use merman::svg::export::{NativeFontContext, NativeFontLimits};
+use merman::svg::{SvgEnvironment, SvgPipeline};
 use merman::{
     AsciiRequest, MermaidEngine, OperationControl, ParseOptions, RenderOutput, RenderRequest,
     Renderer, SourcePresentationConfig, SvgRequest,
@@ -43,8 +45,51 @@ const TEXT_KEYWORDS: [&str; 8] = [
     "statediagram-v2",
 ];
 
+/// Font that merman measures labels with and resvg draws them with. It is bundled
+/// (Liberation Sans, SIL OFL, `assets/fonts`), so the label boxes fit on any machine:
+/// with system fonts the drawn text could be wider than the measured one and the
+/// label viewports (`overflow:hidden`) would cut both ends of it.
+pub const FONT_FAMILY: &str = "Liberation Sans";
+
+/// Faces of [`FONT_FAMILY`]: regular and bold.
+pub const FONT_FACES: [&[u8]; 2] = [
+    include_bytes!("../assets/fonts/LiberationSans-Regular.ttf"),
+    include_bytes!("../assets/fonts/LiberationSans-Bold.ttf"),
+];
+
+/// merman's measuring context over the bundled faces; `None` if it cannot be built
+/// (measurement then falls back to merman's built-in tables).
+fn font_context() -> Option<&'static NativeFontContext> {
+    static CONTEXT: OnceLock<Option<NativeFontContext>> = OnceLock::new();
+    CONTEXT
+        .get_or_init(|| {
+            NativeFontContext::from_font_bytes(
+                FONT_FACES.iter().map(|f| f.to_vec()),
+                NativeFontLimits::default(),
+                &OperationControl::new(),
+            )
+            .ok()
+        })
+        .as_ref()
+}
+
+fn environment() -> SvgEnvironment {
+    let base = SvgEnvironment::deterministic();
+    match font_context() {
+        Some(ctx) => base
+            .clone()
+            .with_native_font_context(ctx.clone())
+            .unwrap_or(base),
+        None => base,
+    }
+}
+
 fn renderer() -> Renderer {
-    let site = SourcePresentationConfig::from_value(serde_json::json!({ "theme": "dark" }));
+    let site = SourcePresentationConfig::from_value(serde_json::json!({
+        "theme": "dark",
+        "fontFamily": FONT_FAMILY,
+        "themeVariables": { "fontFamily": FONT_FAMILY },
+    }));
     Renderer::new()
         .with_parse_options(ParseOptions::strict())
         .with_presentation_engine(MermaidEngine::new().with_site_config(site))
@@ -61,6 +106,7 @@ pub fn render_svg(src: &str) -> Rendered {
     contain(|| {
         let request = SvgRequest {
             pipeline: Some(SvgPipeline::resvg_safe()),
+            environment: environment(),
             ..Default::default()
         };
         match renderer().render(RenderRequest::svg(src, OperationControl::new(), request)) {

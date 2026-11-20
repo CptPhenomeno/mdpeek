@@ -112,7 +112,7 @@ pub fn inline(base: Style, style: InlineStyle, linked: bool) -> Style {
 }
 
 /// Error frame and message colour.
-pub const ERROR: Color = Color::Rgb(243, 139, 168);
+pub const ERROR: Color = Color::Rgb(255, 110, 108);
 
 /// Code box frame of a failed diagram, on the code background.
 pub fn error_border() -> Style {
