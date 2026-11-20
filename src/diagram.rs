@@ -4,7 +4,7 @@
 //! [`Rendered`]. The release profile must keep `panic = "unwind"` (tested), otherwise
 //! `catch_unwind` cannot contain a panic.
 //!
-//! Dark theme: applied through merman's site config (`{"theme": "dark"}`), which needs
+//! Theme: applied through merman's site config (`base` theme plus theme variables from `theme.rs`), which needs
 //! `serde_json` as a normal dependency but leaves the user's source untouched, so a
 //! diagram with its own `%%{init}%%` directive still renders (and may override the theme).
 
@@ -22,7 +22,7 @@ use merman::{
 /// Outcome of rendering a diagram source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Rendered {
-    /// SVG document, Mermaid dark theme, transparent background, `<text>` labels.
+    /// SVG document, Mermaid base theme with the readmd palette, transparent background, `<text>` labels.
     Svg(String),
     /// Unicode drawing (flowchart, sequence, class, state only).
     Text(String),
@@ -84,15 +84,155 @@ fn environment() -> SvgEnvironment {
     }
 }
 
-fn renderer() -> Renderer {
-    let site = SourcePresentationConfig::from_value(serde_json::json!({
-        "theme": "dark",
+/// The merman site config: Mermaid's `base` theme with variables from `theme.rs`.
+pub fn site_config() -> serde_json::Value {
+    use crate::theme::{
+        BG, CODE_BG, DIAGRAM_ON_FILL, ERROR, FG, LINE, deepen, diagram_line, diagram_scale, hex,
+        pastel, primary_fill,
+    };
+    let scale = diagram_scale();
+    let on_fill = hex(DIAGRAM_ON_FILL);
+    let primary = hex(primary_fill());
+    let border = hex(deepen(primary_fill()));
+    let line = hex(diagram_line());
+    let soft_error = hex(scale[9]);
+    let fixed: Vec<(&str, String)> = vec![
+        ("fontFamily", FONT_FAMILY.to_string()),
+        ("background", hex(BG)),
+        ("primaryColor", primary.clone()),
+        ("primaryTextColor", on_fill.clone()),
+        ("primaryBorderColor", border.clone()),
+        ("secondaryColor", hex(scale[5])),
+        ("secondaryTextColor", on_fill.clone()),
+        ("secondaryBorderColor", border.clone()),
+        ("tertiaryColor", hex(scale[1])),
+        ("tertiaryTextColor", on_fill.clone()),
+        ("tertiaryBorderColor", border.clone()),
+        ("lineColor", line.clone()),
+        ("textColor", hex(FG)),
+        ("titleColor", hex(FG)),
+        ("mainBkg", primary.clone()),
+        ("nodeBkg", primary.clone()),
+        ("nodeBorder", border.clone()),
+        ("nodeTextColor", on_fill.clone()),
+        ("clusterBkg", hex(CODE_BG)),
+        ("clusterBorder", hex(LINE)),
+        ("defaultLinkColor", line.clone()),
+        ("edgeLabelBackground", hex(scale[8])),
+        ("labelBackground", hex(scale[8])),
+        ("labelTextColor", on_fill.clone()),
+        ("noteBkgColor", hex(scale[8])),
+        ("noteTextColor", on_fill.clone()),
+        ("noteBorderColor", hex(scale[8])),
+        ("actorBkg", primary.clone()),
+        ("actorBorder", border.clone()),
+        ("actorTextColor", on_fill.clone()),
+        ("actorLineColor", hex(LINE)),
+        ("signalColor", hex(FG)),
+        ("signalTextColor", hex(FG)),
+        ("labelBoxBkgColor", hex(CODE_BG)),
+        ("labelBoxBorderColor", border.clone()),
+        ("loopTextColor", hex(FG)),
+        ("activationBkgColor", hex(scale[1])),
+        ("activationBorderColor", border.clone()),
+        ("sequenceNumberColor", on_fill.clone()),
+        ("cScaleLabel0", on_fill.clone()),
+        ("pieOpacity", "1".to_string()),
+        ("pieTitleTextColor", hex(FG)),
+        ("pieSectionTextColor", on_fill.clone()),
+        ("pieLegendTextColor", hex(FG)),
+        ("pieStrokeColor", hex(BG)),
+        ("pieOuterStrokeColor", hex(BG)),
+        ("classText", on_fill.clone()),
+        ("stateBkg", primary.clone()),
+        ("stateLabelColor", on_fill.clone()),
+        ("altBackground", hex(CODE_BG)),
+        ("transitionColor", line.clone()),
+        ("transitionLabelColor", on_fill.clone()),
+        ("compositeBackground", hex(CODE_BG)),
+        ("compositeTitleBackground", hex(CODE_BG)),
+        ("compositeBorder", hex(LINE)),
+        ("specialStateColor", border.clone()),
+        ("taskBkgColor", primary.clone()),
+        ("taskBorderColor", border.clone()),
+        ("taskTextColor", on_fill.clone()),
+        ("taskTextLightColor", on_fill.clone()),
+        ("taskTextDarkColor", on_fill.clone()),
+        ("taskTextOutsideColor", hex(FG)),
+        ("activeTaskBkgColor", hex(scale[3])),
+        ("activeTaskBorderColor", border.clone()),
+        ("doneTaskBkgColor", hex(scale[7])),
+        ("doneTaskBorderColor", border.clone()),
+        ("critBkgColor", soft_error.clone()),
+        ("critBorderColor", hex(deepen(scale[9]))),
+        ("gridColor", hex(LINE)),
+        ("sectionBkgColor", hex(CODE_BG)),
+        ("altSectionBkgColor", hex(BG)),
+        ("sectionBkgColor2", hex(CODE_BG)),
+        ("todayLineColor", hex(pastel(ERROR))),
+        ("excludeBkgColor", hex(CODE_BG)),
+    ];
+    let mut vars: serde_json::Map<String, serde_json::Value> = fixed
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.into()))
+        .collect();
+    for (i, c) in scale.iter().enumerate() {
+        vars.insert(format!("cScale{i}"), hex(*c).into());
+        vars.insert(format!("cScaleLabel{i}"), on_fill.clone().into());
+        vars.insert(format!("cScaleInv{i}"), hex(*c).into());
+        vars.insert(format!("git{i}"), hex(*c).into());
+        vars.insert(format!("pie{}", i + 1), hex(*c).into());
+    }
+    serde_json::json!({
+        "theme": "base",
         "fontFamily": FONT_FAMILY,
-        "themeVariables": { "fontFamily": FONT_FAMILY },
-    }));
+        "themeVariables": vars,
+    })
+}
+
+fn renderer() -> Renderer {
+    let site = SourcePresentationConfig::from_value(site_config());
     Renderer::new()
         .with_parse_options(ParseOptions::strict())
         .with_presentation_engine(MermaidEngine::new().with_site_config(site))
+}
+
+/// Mermaid fades the edge-label rectangle to half opacity in its stylesheet, whatever the
+/// theme variables say; over the page background that reads as a grey smear. The label
+/// background (`edgeLabelBackground`) is made fully opaque.
+fn opaque_edge_labels(svg: &str) -> String {
+    let svg = svg.replace(".edgeLabel rect{opacity:0.5;", ".edgeLabel rect{opacity:1;");
+    let svg = svg.replace(
+        "<line stroke=\"currentColor\"",
+        &format!("<line stroke=\"{}\"", crate::theme::hex(crate::theme::LINE)),
+    );
+    light_terminal_labels(&svg)
+}
+
+/// Class cardinality labels (`edgeTerminals`) are drawn straight on the page with the
+/// same dark text colour as node labels, and have no background. They get the body
+/// foreground instead.
+fn light_terminal_labels(svg: &str) -> String {
+    use crate::theme::{BG, FG, hex};
+    let (dark, light) = (hex(BG), hex(FG));
+    let mut out = String::with_capacity(svg.len());
+    for (i, part) in svg.split("<text ").enumerate() {
+        if i == 0 {
+            out.push_str(part);
+            continue;
+        }
+        let end = part.find("</text>").unwrap_or(part.len());
+        let (body, rest) = part.split_at(end);
+        out.push_str("<text ");
+        let tag_end = body.find('>').unwrap_or(body.len());
+        if body[..tag_end].contains("edgeTerminals") {
+            out.push_str(&body.replace(&dark, &light));
+        } else {
+            out.push_str(body);
+        }
+        out.push_str(rest);
+    }
+    out
 }
 
 /// Runs `f`, turning a panic into `Rendered::Error`.
@@ -110,7 +250,7 @@ pub fn render_svg(src: &str) -> Rendered {
             ..Default::default()
         };
         match renderer().render(RenderRequest::svg(src, OperationControl::new(), request)) {
-            Ok(RenderOutput::Svg(Some(svg))) => Rendered::Svg(svg.svg().to_string()),
+            Ok(RenderOutput::Svg(Some(svg))) => Rendered::Svg(opaque_edge_labels(svg.svg())),
             Ok(_) => Rendered::Error("No Mermaid diagram type detected".to_string()),
             Err(e) => Rendered::Error(e.to_string()),
         }

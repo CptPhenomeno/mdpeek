@@ -9,14 +9,18 @@ const PIE: &str = "pie title T\n    \"A\" : 15\n    \"B\" : 85\n";
 const MINDMAP: &str = "mindmap\n  root((r))\n    a\n    b\n";
 
 #[test]
-fn valid_flowchart_returns_svg_with_the_dark_theme_and_a_transparent_background() {
+fn valid_flowchart_returns_svg_with_the_readmd_theme_and_a_transparent_background() {
     let Rendered::Svg(svg) = render_svg(FLOWCHART) else {
         panic!("expected svg");
     };
     assert!(svg.trim_start().starts_with("<svg"));
     assert!(!svg.contains("<foreignObject"), "labels must be resvg-safe");
-    // Mermaid dark theme palette, not the default one.
-    assert!(svg.contains("#1f2020"), "dark theme colours missing");
+    // readmd palette, not Mermaid's dark theme.
+    assert!(
+        svg.contains(&readmd::theme::hex(readmd::theme::primary_fill())),
+        "readmd theme colours missing"
+    );
+    assert!(!svg.contains("#1f2020"), "dark theme colours present");
     assert!(!svg.contains("#22D3EE"), "default theme colours present");
     // Transparent: the root element sets no background.
     let root = &svg[..svg.find('>').unwrap_or(svg.len())];
@@ -94,4 +98,125 @@ fn source_hash_is_stable_for_identical_sources_and_differs_for_different_ones() 
     assert_ne!(source_hash(FLOWCHART), source_hash(STATE));
     // Pinned value: stable across runs and releases (FNV-1a 64).
     assert_eq!(source_hash(""), 0xcbf2_9ce4_8422_2325);
+}
+
+#[test]
+fn site_config_sets_the_base_theme_with_variables_from_the_readmd_theme() {
+    use readmd::diagram::site_config;
+    use readmd::theme::{ACCENT, FG, LINK, hex};
+    let cfg = site_config();
+    assert_eq!(cfg["theme"], "base");
+    let v = &cfg["themeVariables"];
+    assert_ne!(
+        v["primaryColor"],
+        hex(LINK),
+        "primary fill must be a pastel"
+    );
+    assert_ne!(v["primaryBorderColor"], hex(ACCENT));
+    assert_ne!(
+        v["lineColor"],
+        hex(ACCENT),
+        "lines are soft, not strong cyan"
+    );
+    assert_ne!(
+        v["edgeLabelBackground"],
+        hex(readmd::theme::EMPHASIS),
+        "edge label background must be a pastel"
+    );
+    assert_eq!(v["textColor"], hex(FG));
+    for key in [
+        "secondaryColor",
+        "tertiaryColor",
+        "lineColor",
+        "edgeLabelBackground",
+        "noteBkgColor",
+        "actorBkg",
+        "cScale0",
+        "cScale11",
+        "pie1",
+        "pie12",
+    ] {
+        let s = v[key].as_str().unwrap_or_default();
+        assert!(
+            s.len() == 7 && s.starts_with('#'),
+            "{key} missing or not #rrggbb: {s:?}"
+        );
+    }
+}
+
+#[test]
+fn edge_label_backgrounds_are_opaque_in_the_svg() {
+    let Rendered::Svg(svg) = render_svg("flowchart LR\n    A -->|yes| B\n") else {
+        panic!("no svg");
+    };
+    let bg = readmd::theme::hex(readmd::theme::pastel(readmd::theme::EMPHASIS));
+    assert!(svg.contains(&bg), "edge label background {bg} not in SVG");
+    assert!(
+        !svg.contains(".edgeLabel rect{opacity:0.5"),
+        "edge label rectangle is faded"
+    );
+    assert!(svg.contains(".edgeLabel rect{opacity:1;"), "no opaque rule");
+    assert!(svg.contains(&format!("fill=\"{bg}\"")), "label rect fill");
+}
+
+const SAMPLES: [&str; 7] = [
+    "flowchart TD\n    A[Open] --> B{Has?}\n    B -- yes --> C[Render]\n    B -- no --> D[Plain]\n",
+    "sequenceDiagram\n    participant U as User\n    participant R as readmd\n    U->>R: open\n    Note over U,R: note\n",
+    "classDiagram\n    class Document {\n        +Vec~Block~ blocks\n    }\n    class Block\n    Document \"1\" --> \"*\" Block\n",
+    "gantt\n    title Plan\n    dateFormat  YYYY-MM-DD\n    section Core\n    Model :done, a1, 2026-11-19, 2d\n    Layout :active, a2, after a1, 3d\n    section Pictures\n    Diagrams : b1, after a2, 4d\n",
+    "mindmap\n  root((readmd))\n    Reading\n      Markdown\n    Pictures\n      Mermaid\n    Navigation\n",
+    "stateDiagram-v2\n    [*] --> Reading\n    Reading --> Searching: Ctrl+F\n    Reading --> [*]\n",
+    "pie title Time\n    \"Parsing\" : 15\n    \"Layout\" : 25\n    \"Diagrams\" : 45\n",
+];
+
+#[test]
+fn all_sample_diagram_types_render_with_the_readmd_palette() {
+    let scale: Vec<String> = readmd::theme::diagram_scale()
+        .into_iter()
+        .map(readmd::theme::hex)
+        .collect();
+    for src in SAMPLES {
+        let Rendered::Svg(svg) = render_svg(src) else {
+            panic!("no svg for {src}");
+        };
+        assert!(svg.contains("<svg"), "{src}");
+        assert!(
+            scale.iter().any(|c| svg.to_lowercase().contains(c)),
+            "no readmd colour in SVG of {src}"
+        );
+    }
+}
+
+#[test]
+fn class_cardinality_labels_are_not_drawn_in_the_page_background_colour() {
+    let Rendered::Svg(svg) = render_svg(SAMPLES[2]) else {
+        panic!("no svg");
+    };
+    let bg = readmd::theme::hex(readmd::theme::BG);
+    let terminals: Vec<&str> = svg
+        .split("<text ")
+        .skip(1)
+        .filter(|t| {
+            let tag = &t[..t.find('>').unwrap_or(t.len())];
+            tag.contains("edgeTerminals")
+        })
+        .collect();
+    assert!(terminals.len() >= 2, "no cardinality labels found");
+    for t in terminals {
+        let tag = &t[..t.find('>').unwrap_or(t.len())];
+        assert!(
+            !tag.contains(&format!("fill=\"{bg}\"")) && !tag.contains(&format!("fill:{bg}")),
+            "dark text on the page background: {tag}"
+        );
+    }
+}
+
+#[test]
+fn gantt_grid_lines_use_the_line_colour_not_black() {
+    let Rendered::Svg(svg) = render_svg(SAMPLES[3]) else {
+        panic!("no svg");
+    };
+    assert!(!svg.contains("<line stroke=\"currentColor\""));
+    let line = readmd::theme::hex(readmd::theme::LINE);
+    assert!(svg.contains(&format!("<line stroke=\"{line}\"")));
 }
