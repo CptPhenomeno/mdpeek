@@ -19,6 +19,7 @@ use ratatui_image::{
 use std::collections::HashMap;
 
 pub mod detect;
+pub mod iterm2;
 
 /// The part of an image slot that intersects the document pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -590,6 +591,13 @@ mod tests {
             prepare_for_encode(&red(30, 20), &cell_slot((30, 20), 3, 1), (10, 20), 2, BG);
         assert_eq!(d, 1);
         assert_eq!((out.width(), out.height()), (30, 20));
+    }
+
+    #[test]
+    fn natural_size_is_reported_in_slot_pixels_not_raster_pixels() {
+        let mut set = PictureSet::sliced(Picker::halfblocks(), BG, 2);
+        set.insert(PictureKey::Diagram(0), red(80, 40));
+        assert_eq!(set.natural_size(&PictureKey::Diagram(0)), Some((40, 20)));
     }
 
     #[test]

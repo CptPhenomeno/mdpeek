@@ -165,7 +165,7 @@ mod tests {
     use std::cell::Cell;
 
     #[test]
-    fn density_is_two_for_cell_box_protocols_and_one_otherwise() {
+    fn density_is_two_for_iterm2_only() {
         let density = |protocol| {
             Selection {
                 protocol,
@@ -175,7 +175,7 @@ mod tests {
             .density()
         };
         assert_eq!(density(ProtocolType::Iterm2), 2);
-        assert_eq!(density(ProtocolType::Kitty), 2);
+        assert_eq!(density(ProtocolType::Kitty), 1);
         assert_eq!(density(ProtocolType::Sixel), 1);
         assert_eq!(density(ProtocolType::Halfblocks), 1);
     }
