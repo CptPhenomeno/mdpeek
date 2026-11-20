@@ -1,10 +1,9 @@
 //! iTerm2 inline images sized in cells (KB-72).
 //!
-//! ratatui-image's iTerm2 encoder sizes an image in pixels, so a raster with
-//! more pixels than the slot would be drawn bigger. Here every row slice of the
-//! picture is its own escape sequence with `width=<cols>;height=1` in cell
-//! units: the terminal scales the slice into the cell box, and a raster of
-//! `density` times the slot size renders sharper instead of larger.
+//! ratatui-image's iTerm2 encoder sizes an image in pixels. Here every row
+//! slice of the picture is its own escape sequence with `width=<cols>;height=1`
+//! in cell units, so the terminal fits the slice to the cell box. The raster is
+//! exactly the cell box in pixels (KB-74), so that mapping is one to one.
 
 use crate::graphics::{PictureRenderer, PictureRequest, clear_row_bands, visible_part};
 use base64::Engine;
@@ -121,9 +120,9 @@ mod tests {
     }
 
     #[test]
-    fn rows_are_sized_in_cells_one_slice_per_row_at_density_height() {
-        // 4x3 cells of 10x20 px at density 2: 80x120 px, slices 80x40 px.
-        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(80, 120, Rgba([9, 8, 7, 255])));
+    fn rows_are_sized_in_cells_one_slice_per_row_at_cell_height() {
+        // 4x3 cells of 10x20 px: 40x60 px, slices 40x20 px.
+        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(40, 60, Rgba([9, 8, 7, 255])));
         let rows = Iterm2Rows::new(&img, 4, 3, false).unwrap();
         assert_eq!(rows.slices().len(), 3);
         for seq in rows.slices() {
@@ -133,7 +132,7 @@ mod tests {
                 &seq[..seq.find(':').unwrap()]
             );
             assert!(!seq.contains("px"), "pixel units would scale the slice");
-            assert_eq!(payload(seq).dimensions(), (80, 40));
+            assert_eq!(payload(seq).dimensions(), (40, 20));
         }
     }
 

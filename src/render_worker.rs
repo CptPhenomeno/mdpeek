@@ -61,8 +61,6 @@ pub struct Job {
     /// Target pixel limits (the slot size; raster fits inside them).
     pub width: u32,
     pub height: u32,
-    /// Pixels per slot pixel: the raster is `density` times the slot size.
-    pub density: u32,
     pub generation: u64,
     /// Lower runs first (e.g. distance from the viewport).
     pub priority: u32,
@@ -104,17 +102,10 @@ pub struct RenderResult {
 /// Injectable renderer, so tests need no merman or files.
 pub type RenderFn = dyn Fn(&Job) -> Output + Send + Sync;
 
-type JobId = (PictureKey, Mode, u32, u32, u32, u64);
+type JobId = (PictureKey, Mode, u32, u32, u64);
 
 fn job_id(j: &Job) -> JobId {
-    (
-        j.key.clone(),
-        j.mode,
-        j.width,
-        j.height,
-        j.density,
-        j.generation,
-    )
+    (j.key.clone(), j.mode, j.width, j.height, j.generation)
 }
 
 #[derive(Default)]
@@ -293,7 +284,6 @@ fn execute_inner(shared: &Shared, job: &Job) -> Outcome {
         source,
         width: job.width,
         height: job.height,
-        density: job.density,
     };
     if let Some(image) = shared.cache.get(&key) {
         let natural = lock(&shared.naturals)
@@ -349,10 +339,7 @@ pub fn render_job(job: &Job) -> Output {
         },
         (Source::Image(path), _) => {
             let natural = raster::image_size(path);
-            match (
-                natural,
-                raster::decode_image(path, job.width, job.height, job.density),
-            ) {
+            match (natural, raster::decode_image(path, job.width, job.height)) {
                 (Ok(n), Ok(img)) => Output::Picture(img, n),
                 (Err(e), _) | (_, Err(e)) => Output::Error(e.to_string()),
             }
@@ -373,7 +360,7 @@ fn svg_output(svg: &str, mode: Mode, job: &Job) -> Output {
     if mode == Mode::Measure {
         return Output::Natural(natural.0, natural.1);
     }
-    match raster::rasterise(svg, job.width, job.height, job.density) {
+    match raster::rasterise(svg, job.width, job.height) {
         Ok(img) => Output::Picture(img, natural),
         Err(e) => Output::Error(e.to_string()),
     }
@@ -398,7 +385,6 @@ mod tests {
             mode: Mode::Render,
             width: 4,
             height: 3,
-            density: 1,
             generation,
             priority: 0,
         }

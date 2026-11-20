@@ -22,8 +22,8 @@ fn assert_nothing_clipped(name: &str, src: &str) {
         "{name}: no label viewport to test"
     );
     let open = clipped.replace("overflow:hidden", "overflow:visible");
-    let a = rasterise(&clipped, 4000, 4000, 1).expect("raster");
-    let b = rasterise(&open, 4000, 4000, 1).expect("raster");
+    let a = rasterise(&clipped, 4000, 4000).expect("raster");
+    let b = rasterise(&open, 4000, 4000).expect("raster");
     assert_eq!(a.dimensions(), b.dimensions());
     let differing = a
         .pixels()
