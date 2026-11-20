@@ -100,14 +100,14 @@ impl ZoomState {
         self.fit_scale() * self.zoom
     }
 
-    /// Scale at 100%: fit to screen, never above natural size (SPEC §4.12;
-    /// a picture smaller than the screen stays at natural size).
+    /// Scale at 100%: fit to screen. A picture smaller than the screen is
+    /// enlarged (SPEC §3.6.3); it is re-rasterised from the SVG, not upscaled.
     pub fn fit_scale(&self) -> f64 {
         let (w, h) = self.natural;
         if w <= 0.0 || h <= 0.0 {
             return 1.0;
         }
-        (self.screen.0 / w).min(self.screen.1 / h).min(1.0)
+        (self.screen.0 / w).min(self.screen.1 / h)
     }
 
     /// Zoom percentage relative to fit, for the status bar.
@@ -385,9 +385,13 @@ mod tests {
         let r = s.source_rect();
         assert!((r.w - 125.0).abs() < EPS);
         assert!(r.x + r.w <= 1000.0 + EPS);
-        // A bigger screen than the zoomed picture: centred again.
+        // A bigger screen: the fit scale grows, zoom is kept, and at 100%
+        // the whole picture is shown, centred.
         let mut s = zoomed(1);
-        s.resize((2000.0, 2000.0)); // natural size fits: whole picture shown
+        s.resize((2000.0, 2000.0)); // fit scale becomes 2
+        assert_eq!(s.percent(), 125);
+        assert_eq!(s.source_rect().w, 800.0);
+        s.reset();
         assert_eq!(s.center(), (500.0, 250.0));
         assert_eq!(s.source_rect().w, 1000.0);
     }
