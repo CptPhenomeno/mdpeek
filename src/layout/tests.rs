@@ -580,3 +580,138 @@ fn pictures_in_lists_and_quotes_keep_the_width_invariant_and_shift_right() {
         }
     }
 }
+
+// --- code blocks (SPEC §3.3, §4.2) ---
+
+fn code_rows(l: &Layout) -> Vec<&Row> {
+    l.rows.iter().filter(|r| r.kind == RowKind::Code).collect()
+}
+
+#[test]
+fn code_block_is_drawn_inside_a_box_with_the_code_background_colour() {
+    let l = lay("```\nab\ncd\n```", 30);
+    let rows = code_rows(&l);
+    assert_eq!(rows.len(), 4);
+    let content = 28;
+    let text: Vec<String> = rows.iter().map(|r| r.text()).collect();
+    assert!(text[0].starts_with('┌') && text[0].ends_with('┐'));
+    assert!(text[1].starts_with("│ ab") && text[1].ends_with(" │"));
+    assert!(text[3].starts_with('└') && text[3].ends_with('┘'));
+    for r in &rows {
+        assert_eq!(r.text().width(), content);
+        for s in &r.spans {
+            assert_eq!(s.style.bg, Some(theme::CODE_BG), "{:?}", s.text);
+            assert!(s.style.fg.is_some());
+            assert_ne!(s.style.bg, Some(Color::Reset));
+        }
+    }
+}
+
+#[test]
+fn language_label_appears_at_the_top_right_of_the_box() {
+    let l = lay("```rust\nlet a = 1;\n```", 30);
+    let top = code_rows(&l)[0].text();
+    assert!(top.starts_with('┌') && top.ends_with("┐"));
+    assert!(top.contains(" rust "), "{top:?}");
+    assert!(top.trim_end_matches("─┐").ends_with(" rust "), "{top:?}");
+    // fence info after a comma is not part of the label
+    let l = lay("```rust,ignore\nlet a = 1;\n```", 30);
+    let top = code_rows(&l)[0].text();
+    assert!(top.contains(" rust ") && !top.contains("ignore"), "{top:?}");
+    // no language: no label, plain border
+    let l = lay("```\nx\n```", 30);
+    assert!(
+        code_rows(&l)[0]
+            .text()
+            .chars()
+            .skip(1)
+            .all(|c| c == '─' || c == '┐')
+    );
+}
+
+#[test]
+fn line_longer_than_the_box_is_truncated_with_an_ellipsis_and_not_wrapped() {
+    let long = "x".repeat(100);
+    for width in [20u16, 30, 60] {
+        let l = lay(&format!("```\n{long}\n```"), width);
+        let rows = code_rows(&l);
+        assert_eq!(rows.len(), 3, "{width}");
+        let inner = usize::from(width) - 2 - 4;
+        assert_eq!(
+            rows[1].text(),
+            format!("│ {}… │", "x".repeat(inner - 1)),
+            "{width}"
+        );
+    }
+    // a line that exactly fits is not truncated
+    let l = lay(&format!("```\n{}\n```", "y".repeat(14)), 20);
+    assert_eq!(code_rows(&l)[1].text(), format!("│ {} │", "y".repeat(14)));
+}
+
+#[test]
+fn highlighted_span_colours_are_kept_inside_the_box() {
+    let l = lay("```rust\nfn main() { let a = \"s\"; }\n```", 60);
+    let rows = code_rows(&l);
+    let fgs: std::collections::HashSet<_> = rows[1]
+        .spans
+        .iter()
+        .filter(|s| s.unit.is_some())
+        .map(|s| s.style.fg)
+        .collect();
+    assert!(fgs.len() > 1, "{fgs:?}");
+    assert!(
+        rows[1]
+            .spans
+            .iter()
+            .all(|s| s.style.bg == Some(theme::CODE_BG))
+    );
+    // unknown language: plain text in the body foreground
+    let l = lay("```nonsense\nhello\n```", 40);
+    let s = span(&l, "hello");
+    assert_eq!(s.style.fg, Some(theme::FG));
+    assert_eq!(s.style.bg, Some(theme::CODE_BG));
+}
+
+#[test]
+fn truncation_measures_wide_characters_by_display_width() {
+    let l = lay(&format!("```\n{}\n```", "漢".repeat(30)), 20);
+    let rows = code_rows(&l);
+    // inner width 14: seven wide characters would be 14, so six plus the ellipsis (13) and a pad
+    for r in &rows {
+        assert_eq!(r.text().width(), 18);
+    }
+    let body = rows[1].text();
+    assert!(
+        body.contains('…') && body.contains("漢漢漢漢漢漢…"),
+        "{body:?}"
+    );
+    assert!(!body.contains("漢漢漢漢漢漢漢"), "{body:?}");
+}
+
+#[test]
+fn code_boxes_in_lists_and_quotes_and_indented_code_keep_the_width_invariant() {
+    let long = "z".repeat(80);
+    let md = format!(
+        "- item\n\n  ```rust\n  {long}\n  ```\n\n> ```\n> {long}\n> ```\n\n    {long}\n\n\tindented\twith tabs"
+    );
+    for width in [20u16, 24, 40] {
+        let l = lay(&md, width);
+        assert!(!code_rows(&l).is_empty());
+        for r in &l.rows {
+            assert!(
+                r.text().width() <= usize::from(width - 2 * MARGIN),
+                "{:?}",
+                r.text()
+            );
+        }
+    }
+    let l = lay("\tindented\twith tabs", 40);
+    assert_eq!(code_rows(&l)[1].text().width(), 38);
+    assert!(!code_rows(&l)[1].text().contains('\t'));
+}
+
+#[test]
+fn mermaid_fence_is_a_diagram_not_a_code_box() {
+    let l = lay(DIAGRAM, 40);
+    assert!(code_rows(&l).is_empty());
+}
