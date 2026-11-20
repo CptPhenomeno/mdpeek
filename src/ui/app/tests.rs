@@ -587,11 +587,13 @@ mod pictures {
         });
         let second = second.expect("second diagram laid out");
         // One page at a time until the slot is one screen below the viewport.
-        while app.scroll() + 2 * app.viewport_height() <= second {
+        loop {
             press(&mut app, KeyCode::PageDown);
+            if app.scroll() + 2 * app.viewport_height() > second {
+                break;
+            }
             assert_eq!(renders(&jobs), vec![PictureKey::Diagram(0)]);
         }
-        press(&mut app, KeyCode::PageDown);
         assert_eq!(
             renders(&jobs),
             vec![PictureKey::Diagram(0), PictureKey::Diagram(1)]
