@@ -95,22 +95,22 @@ fn esc_clears_the_focus() {
 #[test]
 fn the_focused_link_is_drawn_in_reverse_video_across_all_its_wrapped_fragments() {
     let md = "intro [a long link text that wraps](http://x.y) outro\n\n[other](http://o.o)\n";
-    let mut app = app_from(md, 20, 10 + CHROME);
+    let mut app = app_from(md, 24, 10 + CHROME);
     press(&mut app, KeyCode::Tab);
     let Some(Focusable::Link { fragments, .. }) = app.focused().cloned() else {
         panic!("a link must be focused");
     };
     assert!(fragments.len() >= 2, "{fragments:?}");
-    let mut terminal = Terminal::new(TestBackend::new(20, 10 + CHROME)).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(24, 10 + CHROME)).unwrap();
     terminal.draw(|f| app.render(f)).unwrap();
     let buf = terminal.backend().buffer();
     let mut reversed = 0;
     for y in 0..10u16 {
-        for x in 0..20u16 {
+        for x in 0..24u16 {
             let cell = &buf[(x, y + 1)];
             let inside = fragments
                 .iter()
-                .any(|f| f.row == y as usize && x > f.start && x <= f.end);
+                .any(|f| f.row == y as usize && x >= f.start + 2 && x < f.end + 2);
             assert_eq!(
                 cell.modifier.contains(Modifier::REVERSED),
                 inside,

@@ -325,6 +325,7 @@ impl App {
         frame.render_widget(block, pane);
         frame.render_widget(Paragraph::new(self.pane_lines(inner.height)), inner);
         self.draw_pictures(inner, frame.buffer_mut());
+        self.draw_focus(inner, frame.buffer_mut());
         frame.render_widget(Paragraph::new(self.status_line(status.width)), status);
     }
 
@@ -376,6 +377,7 @@ impl App {
                 text_mode: self.text_mode,
             },
         );
+        self.validate_focus();
     }
 
     fn first_row_of(&self, block: usize) -> Option<usize> {
