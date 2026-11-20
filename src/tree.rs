@@ -242,4 +242,29 @@ mod tests {
             ]
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn skips_an_unreadable_subdirectory_without_aborting_the_scan() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = TempDir::new().unwrap();
+        touch(t.path(), "locked/secret.md");
+        touch(t.path(), "readable.md");
+        let locked = t.path().join("locked");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let result = scan(t.path());
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        if fs::read_dir(&locked).is_ok()
+            && fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).is_ok()
+        {
+            let still_readable = fs::read_dir(&locked).is_ok();
+            fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+            if still_readable {
+                return; // running as root: permissions do not bite
+            }
+        }
+        let mut out = Vec::new();
+        render(&result.unwrap(), 0, &mut out);
+        assert_eq!(out, ["readable.md"]);
+    }
 }
