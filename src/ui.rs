@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod keymap;
+pub mod opener;
 pub mod overlay;
 pub mod pictures;
 pub mod terminal;
@@ -24,6 +25,7 @@ use crate::graphics::{
 };
 use crate::picture_cache::PictureCache;
 use crate::render_worker::RenderWorker;
+use crate::ui::opener::SystemOpener;
 
 /// Render worker threads.
 const RENDER_THREADS: usize = 2;
@@ -47,6 +49,7 @@ pub fn run(
     let detector = StdioDetector::default();
     let selection = select(protocol, &detector);
     let mut app = App::new(doc, rel_path);
+    app.set_opener(Box::new(SystemOpener));
     app.set_text_mode(text_diagrams);
     app.set_cell(selection.cell);
     app.set_pictures(PictureSet::sliced(

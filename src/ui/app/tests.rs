@@ -896,4 +896,5 @@ mod pictures {
     }
 }
 
+mod activate;
 mod focus;
