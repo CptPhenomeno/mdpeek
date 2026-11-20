@@ -39,6 +39,8 @@ impl Node {
 /// sorted case-insensitively. Hidden entries and `.gitignore` matches are
 /// skipped, with or without a git repository around `root`.
 pub fn scan(root: &Path) -> io::Result<Vec<Node>> {
+    // Only an unreadable or missing root is an error; deeper failures are skipped.
+    std::fs::read_dir(root)?;
     let walker = WalkBuilder::new(root)
         .hidden(true)
         .require_git(false)
@@ -47,10 +49,11 @@ pub fn scan(root: &Path) -> io::Result<Vec<Node>> {
         .ignore(false)
         .parents(true)
         .follow_links(false)
+        .sort_by_file_name(|a, b| a.cmp(b))
         .build();
     let mut files = Vec::new();
     for entry in walker {
-        let entry = entry.map_err(io::Error::other)?;
+        let Ok(entry) = entry else { continue };
         if entry.file_type().is_some_and(|t| t.is_file()) && has_supported_extension(entry.path()) {
             files.push(entry.into_path());
         }
@@ -79,18 +82,16 @@ fn insert(level: &mut Vec<Node>, dir: &Path, parts: &[&OsStr], file: &Path) {
         return;
     }
     let path = dir.join(first);
-    let existing = level
-        .iter()
-        .position(|n| matches!(n, Node::Dir { path: p, .. } if *p == path));
-    let idx = existing.unwrap_or_else(|| {
+    // The walk is sorted depth-first, so a directory's files are contiguous
+    // and only the last pushed entry can be the directory we need.
+    if !matches!(level.last(), Some(Node::Dir { path: p, .. }) if *p == path) {
         level.push(Node::Dir {
             name,
             path: path.clone(),
             children: Vec::new(),
         });
-        level.len() - 1
-    });
-    if let Node::Dir { children, .. } = &mut level[idx] {
+    }
+    if let Some(Node::Dir { children, .. }) = level.last_mut() {
         insert(children, &path, rest, file);
     }
 }
