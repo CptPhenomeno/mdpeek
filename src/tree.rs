@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
 
-use crate::cli::has_supported_extension;
+use crate::cli::{StartTarget, has_supported_extension};
 
 /// One entry of the scanned tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +105,61 @@ fn sort(nodes: &mut [Node]) {
     }
 }
 
+/// The start-up decision derived from the start target (SPEC §3.1.1-2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Start {
+    pub root: PathBuf,
+    pub sidebar_visible: bool,
+    /// `None` when not scanned yet: a file target starts with the sidebar hidden,
+    /// so the scan is deferred until the sidebar is first shown.
+    pub tree: Option<Vec<Node>>,
+    /// `None` means the empty state.
+    pub initial_file: Option<PathBuf>,
+}
+
+/// Decide root, sidebar visibility, tree and initial file for `target`.
+pub fn start(target: &StartTarget) -> io::Result<Start> {
+    match target {
+        StartTarget::File(file) => {
+            let root = match file.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+                _ => PathBuf::from("."),
+            };
+            Ok(Start {
+                root,
+                sidebar_visible: false,
+                tree: None,
+                initial_file: Some(file.clone()),
+            })
+        }
+        StartTarget::Directory(root) => {
+            let tree = scan(root)?;
+            // README.md is looked up among the root's own files only.
+            let readme = tree.iter().find_map(|n| match n {
+                Node::File { name, path } if name.eq_ignore_ascii_case("readme.md") => {
+                    Some(path.clone())
+                }
+                _ => None,
+            });
+            let initial_file = readme.or_else(|| first_file(&tree));
+            Ok(Start {
+                root: root.clone(),
+                sidebar_visible: true,
+                tree: Some(tree),
+                initial_file,
+            })
+        }
+    }
+}
+
+/// First file in depth-first tree order.
+fn first_file(nodes: &[Node]) -> Option<PathBuf> {
+    nodes.iter().find_map(|n| match n {
+        Node::File { path, .. } => Some(path.clone()),
+        Node::Dir { children, .. } => first_file(children),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,6 +172,66 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(p, "x").unwrap();
+    }
+
+    fn dir_target(root: &Path) -> StartTarget {
+        StartTarget::Directory(root.to_path_buf())
+    }
+
+    #[test]
+    fn file_target_uses_parent_as_root_and_hides_sidebar() {
+        let tmp = TempDir::new().unwrap();
+        touch(tmp.path(), "docs/a.md");
+        touch(tmp.path(), "docs/b.md");
+        let file = tmp.path().join("docs/b.md");
+        let s = start(&StartTarget::File(file.clone())).unwrap();
+        assert_eq!(s.root, tmp.path().join("docs"));
+        assert!(!s.sidebar_visible);
+        assert_eq!(s.initial_file, Some(file));
+        assert!(s.tree.is_none(), "file target must not scan its parent");
+    }
+
+    #[test]
+    fn file_target_never_fails_because_of_its_parent_directory() {
+        let file = PathBuf::from("/nonexistent-readmd-dir/a.md");
+        let s = start(&StartTarget::File(file.clone())).unwrap();
+        assert_eq!(s.initial_file, Some(file));
+    }
+
+    #[test]
+    fn directory_target_opens_readme_case_insensitively() {
+        let tmp = TempDir::new().unwrap();
+        touch(tmp.path(), "a/first.md");
+        touch(tmp.path(), "ReadMe.MD");
+        let s = start(&dir_target(tmp.path())).unwrap();
+        assert_eq!(s.root, tmp.path());
+        assert!(s.sidebar_visible);
+        assert_eq!(s.initial_file, Some(tmp.path().join("ReadMe.MD")));
+    }
+
+    #[test]
+    fn directory_without_readme_opens_first_file_in_tree_order() {
+        let tmp = TempDir::new().unwrap();
+        touch(tmp.path(), "a.md");
+        touch(tmp.path(), "z/inner.md");
+        touch(tmp.path(), "sub/README.md"); // nested README is not the start file
+        let s = start(&dir_target(tmp.path())).unwrap();
+        assert_eq!(s.initial_file, Some(tmp.path().join("sub/README.md")));
+        let tmp = TempDir::new().unwrap();
+        touch(tmp.path(), "b.md");
+        touch(tmp.path(), "a/x/deep.md");
+        let s = start(&dir_target(tmp.path())).unwrap();
+        assert_eq!(s.initial_file, Some(tmp.path().join("a/x/deep.md")));
+    }
+
+    #[test]
+    fn directory_without_supported_files_yields_empty_state() {
+        let tmp = TempDir::new().unwrap();
+        touch(tmp.path(), "notes.txt");
+        let s = start(&dir_target(tmp.path())).unwrap();
+        assert!(s.sidebar_visible);
+        assert_eq!(s.tree, Some(Vec::new()));
+        assert_eq!(s.initial_file, None);
     }
 
     /// Render the tree as indented names, directories suffixed with `/`.
