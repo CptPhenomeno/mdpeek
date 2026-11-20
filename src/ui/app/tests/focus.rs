@@ -163,3 +163,24 @@ fn a_focused_diagram_gets_a_highlighted_frame_around_its_slot() {
     terminal.draw(|f| app.render(f)).unwrap();
     insta::assert_snapshot!(terminal.backend());
 }
+
+#[test]
+fn the_diagram_frame_never_overwrites_text_in_a_tight_layout() {
+    let md =
+        "- tight item\n  ```mermaid\n  graph LR\n    A --> B\n  ```\n- next item right after\n";
+    let mut app = app_from(md, 40, 14 + CHROME);
+    app.add_picture(
+        PictureKey::Diagram(0),
+        image::DynamicImage::new_rgba8(100, 60),
+    );
+    let before = screen(&mut app, 40, 14 + CHROME);
+    press(&mut app, KeyCode::Tab);
+    assert!(matches!(app.focused(), Some(Focusable::Diagram { .. })));
+    let after = screen(&mut app, 40, 14 + CHROME);
+    for (i, line) in before.iter().enumerate() {
+        if line.contains("tight item") || line.contains("next item") {
+            assert_eq!(&after[i], line, "text row {i} changed");
+        }
+    }
+    assert!(after.iter().any(|l| l.contains('│')), "bars still drawn");
+}
