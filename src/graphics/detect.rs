@@ -4,7 +4,10 @@
 //! without a terminal.
 
 use crate::cli::ProtocolChoice;
-use ratatui_image::picker::ProtocolType;
+use ratatui_image::{
+    FontSize,
+    picker::{Picker, ProtocolType},
+};
 
 /// Cell size in pixels assumed when the terminal does not report one.
 pub const DEFAULT_CELL: (u16, u16) = (10, 20);
@@ -34,11 +37,69 @@ pub struct Selection {
 }
 
 /// Applies the SPEC §3.5.1 rules to `choice` and the detector's answer.
+///
+/// A forced protocol skips detection (and so uses [`DEFAULT_CELL`]); `Auto`
+/// trusts the detector; a detection error means halfblocks.
 pub fn select(choice: ProtocolChoice, detector: &dyn Detector) -> Selection {
-    let _ = (choice, detector);
-    Selection {
-        protocol: ProtocolType::Kitty,
-        cell: (0, 0),
+    let forced = match choice {
+        ProtocolChoice::Auto => None,
+        ProtocolChoice::Kitty => Some(ProtocolType::Kitty),
+        ProtocolChoice::Sixel => Some(ProtocolType::Sixel),
+        ProtocolChoice::Iterm2 => Some(ProtocolType::Iterm2),
+        ProtocolChoice::Halfblocks => Some(ProtocolType::Halfblocks),
+    };
+    if let Some(protocol) = forced {
+        return Selection {
+            protocol,
+            cell: DEFAULT_CELL,
+        };
+    }
+    match detector.detect() {
+        Ok(found) => Selection {
+            protocol: found.protocol,
+            cell: found.cell.unwrap_or(DEFAULT_CELL),
+        },
+        Err(_) => Selection {
+            protocol: ProtocolType::Halfblocks,
+            cell: DEFAULT_CELL,
+        },
+    }
+}
+
+impl Selection {
+    /// Picker for the sliced renderer, using this protocol and cell size.
+    pub fn picker(&self) -> Picker {
+        // No other constructor takes a cell size: it covers forced protocols and the
+        // 10x20 fallback, so the Picker always agrees with the layout's cell size.
+        #[allow(deprecated)]
+        let mut picker = Picker::from_fontsize(FontSize::new(self.cell.0, self.cell.1));
+        picker.set_protocol_type(self.protocol);
+        picker
+    }
+
+    /// Human-readable protocol name, for the status bar.
+    pub fn label(&self) -> &'static str {
+        match self.protocol {
+            ProtocolType::Kitty => "Kitty",
+            ProtocolType::Sixel => "Sixel",
+            ProtocolType::Iterm2 => "iTerm2",
+            ProtocolType::Halfblocks => "halfblocks",
+        }
+    }
+}
+
+/// Detector backed by ratatui-image's `Picker::from_query_stdio()`.
+pub struct StdioDetector;
+
+impl Detector for StdioDetector {
+    fn detect(&self) -> Result<Detection, DetectError> {
+        let picker = Picker::from_query_stdio().map_err(|e| DetectError(e.to_string()))?;
+        let font = picker.font_size();
+        let (w, h) = (font.width, font.height);
+        Ok(Detection {
+            protocol: picker.protocol_type(),
+            cell: (w > 0 && h > 0).then_some((w, h)),
+        })
     }
 }
 
