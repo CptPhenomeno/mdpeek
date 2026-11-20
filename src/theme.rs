@@ -154,3 +154,48 @@ mod bg_tests {
         assert_eq!(bg_rgba(), image::Rgba([26, 27, 38, 255]));
     }
 }
+
+#[cfg(test)]
+mod error_colour_tests {
+    use super::*;
+
+    fn channels(c: Color) -> (f64, f64, f64) {
+        let Color::Rgb(r, g, b) = c else {
+            panic!("not an RGB colour")
+        };
+        (f64::from(r), f64::from(g), f64::from(b))
+    }
+
+    fn luminance(c: Color) -> f64 {
+        let lin = |v: f64| {
+            let v = v / 255.0;
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let (r, g, b) = channels(c);
+        0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    }
+
+    fn contrast(a: Color, b: Color) -> f64 {
+        let (x, y) = (luminance(a), luminance(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    #[test]
+    fn error_colour_is_clearly_red_and_readable_on_both_backgrounds() {
+        let (r, g, b) = channels(ERROR);
+        assert!(
+            r >= 200.0 && g <= 110.0 && b <= 110.0,
+            "not red enough: {r} {g} {b}"
+        );
+        assert!(contrast(ERROR, BG) >= 4.5, "{}", contrast(ERROR, BG));
+        assert!(
+            contrast(ERROR, CODE_BG) >= 4.5,
+            "{}",
+            contrast(ERROR, CODE_BG)
+        );
+    }
+}
