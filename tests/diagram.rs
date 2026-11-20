@@ -18,8 +18,12 @@ fn valid_flowchart_returns_svg_with_the_dark_theme_and_a_transparent_background(
     // Mermaid dark theme palette, not the default one.
     assert!(svg.contains("#1f2020"), "dark theme colours missing");
     assert!(!svg.contains("#22D3EE"), "default theme colours present");
-    // Transparent: no full-size background rect directly under the root.
-    assert!(!svg.contains("background-color"), "svg paints a background");
+    // Transparent: the root element sets no background.
+    let root = &svg[..svg.find('>').unwrap_or(svg.len())];
+    assert!(
+        !root.contains("background"),
+        "svg paints a background: {root}"
+    );
 }
 
 #[test]
@@ -79,14 +83,14 @@ fn text_mode_for_a_type_without_text_output_returns_text_unavailable() {
     let src = format!("\n%% note\n{FLOWCHART}");
     assert!(matches!(render_text(&src), Rendered::Text(_)));
     assert!(matches!(
-        render_text(&format!("graph LR\n A-->B\n")),
+        render_text("graph LR\n A-->B\n"),
         Rendered::Text(_)
     ));
 }
 
 #[test]
 fn source_hash_is_stable_for_identical_sources_and_differs_for_different_ones() {
-    assert_eq!(source_hash(FLOWCHART), source_hash(&FLOWCHART.to_string()));
+    assert_eq!(source_hash(FLOWCHART), source_hash(FLOWCHART));
     assert_ne!(source_hash(FLOWCHART), source_hash(STATE));
     // Pinned value: stable across runs and releases (FNV-1a 64).
     assert_eq!(source_hash(""), 0xcbf2_9ce4_8422_2325);
