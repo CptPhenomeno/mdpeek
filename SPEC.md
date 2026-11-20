@@ -117,7 +117,7 @@ A `.mmd`/`.mermaid` file is a document made of a single diagram.
    - `#anchor` link: scroll so the heading whose GitHub-style slug matches is at the top; if no heading matches, status message "Anchor not found".
    - Any other link (local file, other scheme): status message "Local file links are not supported".
    - Diagram: open the full-screen view.
-3. **Full-screen view**: the diagram is rasterised to fit the screen (minus status bar), centred.
+3. **Full-screen view**: the diagram is rasterised to fit the screen (minus status bar), centred. Small diagrams are enlarged to fit too: the SVG is redrawn at the larger scale, so this is not pixel upscaling (user decision after KB-48; the document-pane rule of §4.12 does not apply here).
 
    | Key | Action |
    | --- | ------ |
