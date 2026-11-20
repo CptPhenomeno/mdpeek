@@ -439,16 +439,22 @@ fn no_cell_has_the_default_background_with_a_picture_and_an_overlay_crossing_it(
     let popup = Rect::new(x + 1, 2, 10, 4);
     app.set_overlays(vec![popup]);
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
-    terminal
+    // The frame buffer, not the backend: cells inside an image are skipped by the diff.
+    let frame = terminal
         .draw(|f| {
             app.render(f);
             crate::ui::overlay::frame(f, popup, "Popup");
         })
         .unwrap();
-    let buf = terminal.backend().buffer();
+    let buf = frame.buffer;
     for y in 0..h {
         for x in 0..w {
-            assert_ne!(buf[(x, y)].bg, Color::Reset, "cell ({x}, {y})");
+            assert_ne!(
+                buf[(x, y)].bg,
+                Color::Reset,
+                "cell ({x}, {y}) {:?}",
+                buf[(x, y)]
+            );
         }
     }
 }

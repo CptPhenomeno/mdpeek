@@ -12,12 +12,7 @@ use std::{io, path::PathBuf};
 
 use crossterm::event::{self, Event, KeyCode};
 use image::{DynamicImage, Rgba, RgbaImage};
-use ratatui::{
-    Terminal,
-    backend::CrosstermBackend,
-    layout::Rect,
-    widgets::{Block, Clear, Paragraph},
-};
+use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect, widgets::Paragraph};
 use ratatui_image::picker::{Picker, ProtocolType};
 use readmd::{
     doc::{Document, Source},
@@ -106,10 +101,10 @@ fn main() -> io::Result<()> {
                 app.set_overlays(if overlay { vec![popup] } else { vec![] });
                 app.render(f);
                 if overlay {
-                    f.render_widget(Clear, popup);
+                    let inner = readmd::ui::overlay::frame(f, popup, "Overlay");
                     f.render_widget(
-                        Paragraph::new("overlay (o closes)").block(Block::bordered()),
-                        popup,
+                        Paragraph::new("o closes").style(readmd::theme::page()),
+                        inner,
                     );
                 }
             })?;
