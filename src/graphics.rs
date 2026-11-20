@@ -11,15 +11,15 @@ use ratatui::{
     widgets::Widget,
 };
 use ratatui_image::{
-    FontSize,
     errors::Errors,
-    picker::Picker,
+    picker::{Picker, ProtocolType},
     sliced::{SignedPosition, SlicedImage, SlicedProtocol},
 };
 use std::collections::HashMap;
 
 pub mod detect;
 pub mod iterm2;
+use iterm2::{Iterm2Renderer, Iterm2Rows};
 
 /// The part of an image slot that intersects the document pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -290,14 +290,7 @@ enum Backend {
     /// Marker symbol per visible cell; no pixels (snapshot tests).
     Placeholder(char),
     /// Real terminal graphics through `ratatui-image`.
-    Sliced {
-        picker: Picker,
-        /// The same protocol with a cell `density` times larger, for rasters of
-        /// `density` times the slot size; `None` at density 1.
-        dense: Option<Picker>,
-        density: u32,
-        bg: Rgba<u8>,
-    },
+    Sliced { picker: Picker, bg: Rgba<u8> },
 }
 
 /// A decoded picture and its encoding for the current slot size.
@@ -314,6 +307,8 @@ pub struct PictureSet {
     backend: Backend,
     items: HashMap<PictureKey, Entry>,
     encodes: usize,
+    /// Raster pixels per slot pixel the pictures are delivered at.
+    density: u32,
 }
 
 impl std::fmt::Debug for PictureSet {
@@ -331,6 +326,7 @@ impl PictureSet {
             backend,
             items: HashMap::new(),
             encodes: 0,
+            density: 1,
         }
     }
 
@@ -341,26 +337,12 @@ impl PictureSet {
 
     /// Draws real graphics with the protocol of `picker`; transparent pixels
     /// are composited over `bg` (SPEC §4.2).
-    /// Rasters of `density` times the slot size are encoded as they are.
+    /// Rasters of `density` times the slot size are encoded as they are, for
+    /// iTerm2 only (cell-unit rows); other protocols always encode at 1x.
     pub fn sliced(picker: Picker, bg: Rgba<u8>, density: u32) -> Self {
-        let density = density.max(1);
-        let dense = (density > 1).then(|| {
-            let font = picker.font_size();
-            // The only constructor that takes a cell size; the protocol is set back.
-            #[allow(deprecated)]
-            let mut dense = Picker::from_fontsize(FontSize::new(
-                font.width.saturating_mul(density as u16),
-                font.height.saturating_mul(density as u16),
-            ));
-            dense.set_protocol_type(picker.protocol_type());
-            dense
-        });
-        Self::with(Backend::Sliced {
-            picker,
-            dense,
-            density,
-            bg,
-        })
+        let mut set = Self::with(Backend::Sliced { picker, bg });
+        set.density = density.max(1);
+        set
     }
 
     /// Adds or replaces the picture of `key`; its encoding is dropped.
@@ -389,27 +371,27 @@ impl PictureSet {
                 Backend::Placeholder(symbol) => {
                     Some(Box::new(PlaceholderRenderer { symbol: *symbol }))
                 }
-                Backend::Sliced {
-                    picker,
-                    dense,
-                    density,
-                    bg,
-                } => {
+                Backend::Sliced { picker, bg } => {
                     let font = picker.font_size();
+                    let iterm2 = picker.protocol_type() == ProtocolType::Iterm2;
                     let (img, used) = prepare_for_encode(
                         &entry.img,
                         slot,
                         (u32::from(font.width), u32::from(font.height)),
-                        *density,
+                        if iterm2 { self.density } else { 1 },
                         *bg,
                     );
-                    let picker = match dense {
-                        Some(dense) if used > 1 => dense,
-                        _ => picker,
-                    };
-                    SlicedRenderer::new(picker, img, *bg)
-                        .ok()
-                        .map(|r| Box::new(r) as Box<dyn PictureRenderer>)
+                    if iterm2 {
+                        let flat = flatten_over(&img, *bg);
+                        Iterm2Rows::new(&flat, slot.cols, slot.rows, picker.tmux_detected())
+                            .ok()
+                            .map(|r| Box::new(Iterm2Renderer::new(r)) as Box<dyn PictureRenderer>)
+                    } else {
+                        debug_assert_eq!(used, 1);
+                        SlicedRenderer::new(picker, img, *bg)
+                            .ok()
+                            .map(|r| Box::new(r) as Box<dyn PictureRenderer>)
+                    }
                 }
             };
             self.encodes += 1;
@@ -423,7 +405,11 @@ impl PictureSet {
 
 impl PictureSizes for PictureSet {
     fn natural_size(&self, key: &PictureKey) -> Option<(u32, u32)> {
-        self.items.get(key).map(|e| (e.img.width(), e.img.height()))
+        // Slot pixels: the raster divided by the density it was made at.
+        let d = self.density;
+        self.items
+            .get(key)
+            .map(|e| (e.img.width().div_ceil(d), e.img.height().div_ceil(d)))
     }
 }
 
