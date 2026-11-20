@@ -4,7 +4,6 @@ use crossterm::event::{KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Color,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
