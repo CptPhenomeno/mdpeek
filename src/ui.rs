@@ -18,7 +18,6 @@ use crate::graphics::{
     PictureSet,
     detect::{StdioDetector, select},
 };
-use image::Rgba;
 
 /// Run the viewer on `doc` until the user quits; `rel_path` is shown in the status bar.
 /// `protocol` is the `--protocol` choice; the detected one is announced in the status bar.
@@ -27,12 +26,13 @@ pub fn run(doc: Document, rel_path: String, protocol: ProtocolChoice) -> io::Res
     let _guard = terminal::TerminalGuard::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     // Detection needs raw mode and the alternate screen, and must precede the first draw.
-    let selection = select(protocol, &StdioDetector);
+    let detector = StdioDetector::default();
+    let selection = select(protocol, &detector);
     let mut app = App::new(doc, rel_path);
     app.set_cell(selection.cell);
     app.set_pictures(PictureSet::sliced(
-        selection.picker(),
-        Rgba([26, 27, 38, 255]),
+        selection.picker(&detector),
+        crate::theme::bg_rgba(),
     ));
     app.set_message(format!("Graphics: {}", selection.label()));
     while !app.should_quit() {

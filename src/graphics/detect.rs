@@ -3,6 +3,8 @@
 //! Detection sits behind [`Detector`] so the selection rules are testable
 //! without a terminal.
 
+use std::cell::RefCell;
+
 use crate::cli::ProtocolChoice;
 use ratatui_image::{
     FontSize,
@@ -29,6 +31,10 @@ pub trait Detector {
     fn detect(&self) -> Result<Detection, DetectError>;
     /// Cell size in pixels from the window size, without querying protocols.
     fn cell_size(&self) -> Option<(u16, u16)>;
+    /// The picker built by the last successful detection, if the detector keeps one.
+    fn take_picker(&self) -> Option<Picker> {
+        None
+    }
 }
 
 /// The protocol and cell size pictures are encoded and laid out with.
@@ -36,6 +42,8 @@ pub trait Detector {
 pub struct Selection {
     pub protocol: ProtocolType,
     pub cell: (u16, u16),
+    /// Protocol and cell size both come from a successful detection.
+    pub detected: bool,
 }
 
 /// Applies the SPEC §3.5.1 rules to `choice` and the detector's answer.
@@ -53,24 +61,37 @@ pub fn select(choice: ProtocolChoice, detector: &dyn Detector) -> Selection {
     if let Some(protocol) = forced {
         return Selection {
             protocol,
-            cell: DEFAULT_CELL,
+            cell: detector.cell_size().unwrap_or(DEFAULT_CELL),
+            detected: false,
         };
     }
     match detector.detect() {
         Ok(found) => Selection {
             protocol: found.protocol,
             cell: found.cell.unwrap_or(DEFAULT_CELL),
+            detected: true,
         },
         Err(_) => Selection {
             protocol: ProtocolType::Halfblocks,
-            cell: DEFAULT_CELL,
+            cell: detector.cell_size().unwrap_or(DEFAULT_CELL),
+            detected: false,
         },
     }
 }
 
 impl Selection {
-    /// Picker for the sliced renderer, using this protocol and cell size.
-    pub fn picker(&self) -> Picker {
+    /// Picker for the sliced renderer, using this protocol and cell size. After a
+    /// successful detection it is the detected picker itself, keeping its capabilities.
+    pub fn picker(&self, detector: &dyn Detector) -> Picker {
+        if self.detected
+            && let Some(picker) = detector.take_picker()
+        {
+            return picker;
+        }
+        self.fallback_picker()
+    }
+
+    fn fallback_picker(&self) -> Picker {
         // No other constructor takes a cell size: it covers forced protocols and the
         // 10x20 fallback, so the Picker always agrees with the layout's cell size.
         #[allow(deprecated)]
@@ -90,22 +111,40 @@ impl Selection {
     }
 }
 
+/// Cell size in pixels from a window size, when the terminal reports pixels.
+fn cell_from_window(columns: u16, rows: u16, width: u16, height: u16) -> Option<(u16, u16)> {
+    if columns == 0 || rows == 0 || width == 0 || height == 0 {
+        return None;
+    }
+    Some((width / columns, height / rows)).filter(|&(w, h)| w > 0 && h > 0)
+}
+
 /// Detector backed by ratatui-image's `Picker::from_query_stdio()`.
-pub struct StdioDetector;
+#[derive(Default)]
+pub struct StdioDetector {
+    picker: RefCell<Option<Picker>>,
+}
 
 impl Detector for StdioDetector {
     fn cell_size(&self) -> Option<(u16, u16)> {
-        None
+        let size = crossterm::terminal::window_size().ok()?;
+        cell_from_window(size.columns, size.rows, size.width, size.height)
+    }
+
+    fn take_picker(&self) -> Option<Picker> {
+        self.picker.borrow_mut().take()
     }
 
     fn detect(&self) -> Result<Detection, DetectError> {
         let picker = Picker::from_query_stdio().map_err(|e| DetectError(e.to_string()))?;
         let font = picker.font_size();
         let (w, h) = (font.width, font.height);
-        Ok(Detection {
+        let found = Detection {
             protocol: picker.protocol_type(),
             cell: (w > 0 && h > 0).then_some((w, h)),
-        })
+        };
+        *self.picker.borrow_mut() = Some(picker);
+        Ok(found)
     }
 }
 
@@ -158,6 +197,13 @@ mod tests {
             assert_eq!(sel.protocol, expected);
             assert_eq!(det.calls.get(), 0, "{choice:?} must not query the terminal");
         }
+    }
+
+    #[test]
+    fn window_size_gives_cell_size() {
+        assert_eq!(cell_from_window(100, 50, 900, 950), Some((9, 19)));
+        assert_eq!(cell_from_window(100, 50, 0, 0), None);
+        assert_eq!(cell_from_window(0, 0, 900, 950), None);
     }
 
     #[test]
