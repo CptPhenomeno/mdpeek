@@ -90,7 +90,7 @@ impl fmt::Display for CliError {
 
 impl std::error::Error for CliError {}
 
-fn has_supported_extension(path: &Path) -> bool {
+pub fn has_supported_extension(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
         SUPPORTED_EXTENSIONS
             .iter()
