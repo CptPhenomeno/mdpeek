@@ -235,6 +235,17 @@ impl PictureRenderer for SlicedRenderer {
     }
 }
 
+/// The image to encode for `slot` and the density it is encoded at (KB-72).
+pub fn prepare_for_encode(
+    img: &DynamicImage,
+    _slot: &Slot,
+    _cell: (u32, u32),
+    _density: u32,
+    _bg: Rgba<u8>,
+) -> (DynamicImage, u32) {
+    (img.clone(), 1)
+}
+
 /// How pictures are turned into renderers.
 enum Backend {
     /// Marker symbol per visible cell; no pixels (snapshot tests).
@@ -465,6 +476,49 @@ mod tests {
             left: 0,
             known: true,
         }
+    }
+
+    const BG: Rgba<u8> = Rgba([1, 2, 3, 255]);
+
+    fn cell_slot(px: (u32, u32), cols: u16, rows: u16) -> Slot {
+        Slot {
+            cols,
+            rows,
+            ..slot(px)
+        }
+    }
+
+    fn red(w: u32, h: u32) -> DynamicImage {
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(w, h, Rgba([255, 0, 0, 255])))
+    }
+
+    #[test]
+    fn an_svg_picture_reaches_the_encoder_at_exactly_the_rasterised_size() {
+        // 4x2 cells of 10x20 px at density 2 are 80x80 px: no resize, no padding.
+        let img = red(80, 80);
+        let (out, d) = prepare_for_encode(&img, &cell_slot((40, 40), 4, 2), (10, 20), 2, BG);
+        assert_eq!(d, 2);
+        assert_eq!(out.to_rgba8().as_raw(), img.to_rgba8().as_raw());
+    }
+
+    #[test]
+    fn a_picture_short_of_whole_cells_is_padded_not_resampled() {
+        let (out, d) =
+            prepare_for_encode(&red(70, 60), &cell_slot((35, 30), 4, 2), (10, 20), 2, BG);
+        assert_eq!(d, 2);
+        assert_eq!((out.width(), out.height()), (80, 80));
+        let rgba = out.to_rgba8();
+        assert_eq!(rgba.get_pixel(69, 59).0, [255, 0, 0, 255]);
+        assert_eq!(rgba.get_pixel(79, 79).0, [1, 2, 3, 255]);
+    }
+
+    #[test]
+    fn a_picture_below_the_density_falls_back_to_one_x_without_upscaling() {
+        // A 30x20 bitmap in a 30x20 slot has no 2x pixels to offer.
+        let (out, d) =
+            prepare_for_encode(&red(30, 20), &cell_slot((30, 20), 3, 1), (10, 20), 2, BG);
+        assert_eq!(d, 1);
+        assert_eq!((out.width(), out.height()), (30, 20));
     }
 
     #[test]

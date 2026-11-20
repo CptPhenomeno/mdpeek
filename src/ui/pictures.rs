@@ -379,6 +379,7 @@ impl Pictures {
             mode,
             width: px.0,
             height: px.1,
+            density: 1,
             generation: self.generation,
             priority,
         };

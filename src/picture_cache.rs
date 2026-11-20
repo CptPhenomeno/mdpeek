@@ -21,6 +21,8 @@ pub struct CacheKey {
     pub source: u64,
     pub width: u32,
     pub height: u32,
+    /// Raster pixels per slot pixel: 1x and 2x rasters never collide.
+    pub density: u32,
 }
 
 struct Entry {
@@ -175,6 +177,7 @@ mod tests {
             source: s,
             width: w,
             height: h,
+            density: 1,
         }
     }
 

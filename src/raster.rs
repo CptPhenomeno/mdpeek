@@ -84,7 +84,13 @@ fn fit_size(w: f32, h: f32, max_w: u32, max_h: u32) -> (u32, u32) {
 ///
 /// Never scales up. When a limit binds, that dimension equals the limit exactly.
 /// The result keeps transparency.
-pub fn rasterise(svg: &str, max_w: u32, max_h: u32) -> Result<RgbaImage, RasterError> {
+pub fn rasterise(
+    svg: &str,
+    max_w: u32,
+    max_h: u32,
+    density: u32,
+) -> Result<RgbaImage, RasterError> {
+    let _ = density;
     let tree = parse(svg)?;
     let (w, h) = (tree.size().width(), tree.size().height());
     if !(w > 0.0 && h > 0.0) || max_w == 0 || max_h == 0 {
@@ -149,10 +155,17 @@ pub fn image_size(path: &Path) -> Result<(u32, u32), RasterError> {
 /// Decode a local image (PNG, JPEG, WebP, GIF first frame, SVG) to
 /// straight-alpha RGBA, scaled down to fit `max_w` x `max_h` and never up.
 /// Missing, unreadable or corrupt files are `NotFound` (SPEC §3.5.3).
-pub fn decode_image(path: &Path, max_w: u32, max_h: u32) -> Result<RgbaImage, RasterError> {
+pub fn decode_image(
+    path: &Path,
+    max_w: u32,
+    max_h: u32,
+    density: u32,
+) -> Result<RgbaImage, RasterError> {
+    let _ = density;
     let head = read_head(path)?;
     if is_svg(path, &head) {
-        return rasterise(&read_svg(path)?, max_w, max_h).map_err(|_| RasterError::NotFound);
+        return rasterise(&read_svg(path)?, max_w, max_h, density)
+            .map_err(|_| RasterError::NotFound);
     }
     let img = image::ImageReader::open(path)
         .and_then(|r| r.with_guessed_format())
@@ -187,26 +200,36 @@ mod tests {
 
     #[test]
     fn smaller_than_limits_keeps_natural_size() {
-        let img = rasterise(&svg(200, 100, RECT), 1000, 1000).unwrap();
+        let img = rasterise(&svg(200, 100, RECT), 1000, 1000, 1).unwrap();
         assert_eq!(img.dimensions(), (200, 100));
     }
 
     #[test]
     fn wider_than_max_width_scales_down_keeping_aspect() {
-        let img = rasterise(&svg(400, 200, RECT), 100, 1000).unwrap();
+        let img = rasterise(&svg(400, 200, RECT), 100, 1000, 1).unwrap();
         assert_eq!(img.dimensions(), (100, 50));
     }
 
     #[test]
     fn taller_than_cap_scales_down_to_cap_height() {
-        let img = rasterise(&svg(100, 400, RECT), 1000, 200).unwrap();
+        let img = rasterise(&svg(100, 400, RECT), 1000, 200, 1).unwrap();
         assert_eq!(img.dimensions(), (50, 200));
+    }
+
+    #[test]
+    fn density_two_doubles_the_rasterised_pixels() {
+        let img = rasterise(&svg(200, 100, RECT), 1000, 1000, 2).unwrap();
+        assert_eq!(img.dimensions(), (400, 200));
+        assert_eq!(img.get_pixel(399, 199).0, [255, 0, 0, 255]);
+        // Scaled down to fit at 1x, then doubled: the same slot, twice the pixels.
+        let img = rasterise(&svg(400, 200, RECT), 100, 1000, 2).unwrap();
+        assert_eq!(img.dimensions(), (200, 100));
     }
 
     #[test]
     fn transparent_background_stays_transparent() {
         let body = r##"<rect x="0" y="0" width="10" height="10" fill="#f00"/>"##;
-        let img = rasterise(&svg(20, 20, body), 100, 100).unwrap();
+        let img = rasterise(&svg(20, 20, body), 100, 100, 1).unwrap();
         assert_eq!(img.get_pixel(19, 19).0[3], 0);
         assert_eq!(img.get_pixel(2, 2).0, [255, 0, 0, 255]);
     }
@@ -215,7 +238,7 @@ mod tests {
     fn text_is_drawn_with_system_fonts() {
         let body =
             r##"<text x="5" y="40" font-size="40" font-family="sans-serif" fill="#000">Hi</text>"##;
-        let img = rasterise(&svg(100, 60, body), 100, 100).unwrap();
+        let img = rasterise(&svg(100, 60, body), 100, 100, 1).unwrap();
         assert!(img.pixels().any(|p| p.0[3] > 0), "no glyph pixels drawn");
     }
 
@@ -229,7 +252,7 @@ mod tests {
     #[test]
     fn invalid_svg_returns_an_error() {
         assert!(matches!(
-            rasterise("not svg at all", 100, 100),
+            rasterise("not svg at all", 100, 100, 1),
             Err(RasterError::Invalid(_))
         ));
         assert!(intrinsic_size("<svg").is_err());
@@ -274,7 +297,7 @@ mod tests {
             .save(&jpeg)
             .unwrap();
         for p in [png, gif, webp, jpeg] {
-            let img = decode_image(&p, 100, 100).unwrap();
+            let img = decode_image(&p, 100, 100, 1).unwrap();
             assert_eq!(img.dimensions(), (16, 8), "{p:?}");
             assert!(near(img.get_pixel(8, 4).0, [255, 0, 0, 255], 12), "{p:?}");
         }
@@ -291,7 +314,7 @@ mod tests {
         enc.encode_frame(image::Frame::new(solid(8, 8, [0, 0, 255, 255])))
             .unwrap();
         drop(enc);
-        let img = decode_image(&p, 100, 100).unwrap();
+        let img = decode_image(&p, 100, 100, 1).unwrap();
         assert_eq!(img.get_pixel(4, 4).0, [255, 0, 0, 255]);
     }
 
@@ -300,7 +323,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("pic.svg");
         std::fs::write(&p, svg(40, 20, RECT)).unwrap();
-        let img = decode_image(&p, 100, 100).unwrap();
+        let img = decode_image(&p, 100, 100, 1).unwrap();
         assert_eq!(img.dimensions(), (40, 20));
         assert_eq!(img.get_pixel(5, 5).0, [255, 0, 0, 255]);
         assert_eq!(image_size(&p).unwrap(), (40, 20));
@@ -310,7 +333,7 @@ mod tests {
     fn image_wider_than_pane_scales_down_to_pane_width() {
         let dir = tempfile::tempdir().unwrap();
         let p = save(&dir, "w.png", &solid(400, 200, [0, 255, 0, 255]));
-        let img = decode_image(&p, 100, 1000).unwrap();
+        let img = decode_image(&p, 100, 1000, 1).unwrap();
         assert_eq!(img.dimensions(), (100, 50));
     }
 
@@ -318,15 +341,35 @@ mod tests {
     fn image_smaller_than_pane_keeps_natural_size() {
         let dir = tempfile::tempdir().unwrap();
         let p = save(&dir, "s.png", &solid(30, 20, [0, 255, 0, 255]));
-        let img = decode_image(&p, 1000, 1000).unwrap();
+        let img = decode_image(&p, 1000, 1000, 1).unwrap();
         assert_eq!(img.dimensions(), (30, 20));
+    }
+
+    #[test]
+    fn bitmaps_are_not_upscaled_beyond_their_natural_pixels_by_density() {
+        let dir = tempfile::tempdir().unwrap();
+        let small = save(&dir, "s.png", &solid(30, 20, [0, 255, 0, 255]));
+        assert_eq!(
+            decode_image(&small, 1000, 1000, 2).unwrap().dimensions(),
+            (30, 20)
+        );
+        // Downscaled to the slot at 1x: density gives back up to twice the slot pixels.
+        let big = save(&dir, "b.png", &solid(400, 200, [0, 255, 0, 255]));
+        assert_eq!(
+            decode_image(&big, 100, 1000, 2).unwrap().dimensions(),
+            (200, 100)
+        );
+        assert_eq!(
+            decode_image(&big, 300, 1000, 2).unwrap().dimensions(),
+            (400, 200)
+        );
     }
 
     #[test]
     fn image_taller_than_pane_is_capped_keeping_aspect() {
         let dir = tempfile::tempdir().unwrap();
         let p = save(&dir, "t.png", &solid(100, 400, [0, 255, 0, 255]));
-        let img = decode_image(&p, 1000, 200).unwrap();
+        let img = decode_image(&p, 1000, 200, 1).unwrap();
         assert_eq!(img.dimensions(), (50, 200));
     }
 
@@ -339,7 +382,7 @@ mod tests {
         let cut = dir.path().join("cut.png");
         std::fs::write(&cut, &bytes[..64.min(bytes.len())]).unwrap();
         assert_eq!(image_size(&cut).unwrap(), (64, 32));
-        assert!(decode_image(&cut, 100, 100).is_err());
+        assert!(decode_image(&cut, 100, 100, 1).is_err());
     }
 
     #[test]
@@ -347,14 +390,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("nope.png");
         assert!(matches!(
-            decode_image(&missing, 100, 100),
+            decode_image(&missing, 100, 100, 1),
             Err(RasterError::NotFound)
         ));
         assert!(matches!(image_size(&missing), Err(RasterError::NotFound)));
         let bad = dir.path().join("bad.png");
         std::fs::write(&bad, b"definitely not a png").unwrap();
         assert!(matches!(
-            decode_image(&bad, 100, 100),
+            decode_image(&bad, 100, 100, 1),
             Err(RasterError::NotFound)
         ));
         assert!(matches!(image_size(&bad), Err(RasterError::NotFound)));

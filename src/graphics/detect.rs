@@ -100,6 +100,11 @@ impl Selection {
         picker
     }
 
+    /// Raster pixels per slot pixel (KB-72).
+    pub fn density(&self) -> u32 {
+        1
+    }
+
     /// Human-readable protocol name, for the status bar.
     pub fn label(&self) -> &'static str {
         match self.protocol {
@@ -152,6 +157,22 @@ impl Detector for StdioDetector {
 mod tests {
     use super::*;
     use std::cell::Cell;
+
+    #[test]
+    fn density_is_two_for_cell_box_protocols_and_one_otherwise() {
+        let density = |protocol| {
+            Selection {
+                protocol,
+                cell: (10, 20),
+                detected: false,
+            }
+            .density()
+        };
+        assert_eq!(density(ProtocolType::Iterm2), 2);
+        assert_eq!(density(ProtocolType::Kitty), 2);
+        assert_eq!(density(ProtocolType::Sixel), 1);
+        assert_eq!(density(ProtocolType::Halfblocks), 1);
+    }
 
     struct Fake {
         result: Result<Detection, DetectError>,
