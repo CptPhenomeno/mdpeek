@@ -792,6 +792,22 @@ mod tests {
     }
 
     #[test]
+    fn image_paths_are_percent_decoded() {
+        let base = Path::new("/docs");
+        let doc =
+            Document::from_bytes_in(b"![p](my%20pic%C3%A9.png)", Source::Markdown, Some(base));
+        assert_eq!(
+            first_image(&doc).target,
+            ImageTarget::Local(PathBuf::from("/docs/my picé.png"))
+        );
+        let bad = Document::from_bytes_in(b"![p](100%.png)", Source::Markdown, None);
+        assert_eq!(
+            first_image(&bad).target,
+            ImageTarget::Local(PathBuf::from("100%.png"))
+        );
+    }
+
+    #[test]
     fn http_images_are_remote_with_alt() {
         for url in ["http://x.io/a.png", "https://x.io/b.png"] {
             let doc = md(&format!("![a *b* `c`]({url})"));

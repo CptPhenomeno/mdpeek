@@ -41,6 +41,49 @@ pub enum RowKind {
     Table,
     /// Spacing between blocks.
     Blank,
+    /// A row reserved for a picture; no text is drawn over it. Only the first
+    /// row of a slot carries the [`Slot`] description.
+    Picture,
+    /// Dimmed one-row placeholder of a missing or remote image.
+    ImageNote,
+}
+
+/// Which picture a slot or a size query is about.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PictureKey {
+    /// Mermaid diagram, numbered in document order from 0 (footnotes last).
+    Diagram(usize),
+    /// Local image file (percent-decoded, resolved against the document directory).
+    Image(std::path::PathBuf),
+}
+
+/// Natural pixel size of pictures, supplied by whoever can read or render them.
+pub trait PictureSizes {
+    /// `None`: unknown. For a local image that means missing or unreadable; for a
+    /// diagram, not rendered yet.
+    fn natural_size(&self, key: &PictureKey) -> Option<(u32, u32)>;
+}
+
+impl<F: Fn(&PictureKey) -> Option<(u32, u32)>> PictureSizes for F {
+    fn natural_size(&self, key: &PictureKey) -> Option<(u32, u32)> {
+        self(key)
+    }
+}
+
+/// A set of whole rows reserved for one picture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Slot {
+    pub key: PictureKey,
+    /// Columns the picture spans.
+    pub cols: u16,
+    /// Rows the slot reserves (the slot's `Picture` rows).
+    pub rows: u16,
+    /// Pixel size the picture is drawn at (already scaled down).
+    pub px: (u32, u32),
+    /// Columns between the left edge of the content area and the picture.
+    pub left: u16,
+    /// False while the natural size is unknown: the slot is a placeholder.
+    pub known: bool,
 }
 
 /// A run of text with one style inside a row.
@@ -59,6 +102,8 @@ pub struct Row {
     /// Index of the top-level block the row belongs to.
     pub block: usize,
     pub spans: Vec<RowSpan>,
+    /// Set on the first row of a picture slot.
+    pub slot: Option<Slot>,
 }
 
 impl Row {
@@ -75,7 +120,20 @@ pub struct Layout {
 }
 
 /// Lay `doc` out for a pane `width` columns wide; `cell` is the cell size in pixels.
-pub fn layout(doc: &Document, width: u16, _cell: (u16, u16)) -> Layout {
+/// Pictures have no known size here, so images are missing and diagrams are placeholders.
+pub fn layout(doc: &Document, width: u16, cell: (u16, u16)) -> Layout {
+    layout_with(doc, width, u16::MAX, cell, &|_: &PictureKey| None)
+}
+
+/// Like [`layout`], for a pane `height` rows tall, with picture sizes from `sizes`.
+pub fn layout_with(
+    doc: &Document,
+    width: u16,
+    height: u16,
+    cell: (u16, u16),
+    sizes: &dyn PictureSizes,
+) -> Layout {
+    let _ = (height, sizes);
     let state = if width < MIN_WIDTH {
         State::TooNarrow
     } else if doc.empty {
@@ -117,6 +175,7 @@ fn footnotes(doc: &Document, content: usize, rows: &mut Vec<Row>) {
     rows.push(Row {
         kind: RowKind::Rule,
         block: index,
+        slot: None,
         spans: vec![RowSpan {
             text: "─".repeat(content),
             style: theme::rule(),
@@ -135,6 +194,7 @@ fn blank(index: usize) -> Row {
     Row {
         kind: RowKind::Blank,
         block: index,
+        slot: None,
         spans: Vec::new(),
     }
 }
@@ -179,6 +239,7 @@ fn hang_rows(mut rows: Vec<Row>, index: usize, marker: &str, hang: usize, max: u
         rows.push(Row {
             kind: RowKind::Text,
             block: index,
+            slot: None,
             spans: Vec::new(),
         });
     }
@@ -261,6 +322,7 @@ fn list_rows(list: &List, index: usize, content: usize) -> Vec<Row> {
                 Row {
                     kind: RowKind::Text,
                     block: index,
+                    slot: None,
                     spans: vec![lone],
                 },
             );
@@ -290,6 +352,7 @@ fn block_rows(block: &Block, index: usize, content: usize) -> Vec<Row> {
             .map(|spans| Row {
                 kind,
                 block: index,
+                slot: None,
                 spans,
             })
             .collect()
@@ -297,6 +360,7 @@ fn block_rows(block: &Block, index: usize, content: usize) -> Vec<Row> {
     let rule = |glyph: &str| Row {
         kind: RowKind::Rule,
         block: index,
+        slot: None,
         spans: vec![RowSpan {
             text: glyph.repeat(content),
             style: theme::rule(),

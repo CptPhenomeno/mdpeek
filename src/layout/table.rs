@@ -65,6 +65,7 @@ fn border(widths: &[usize], left: char, mid: char, right: char, index: usize) ->
     Row {
         kind: RowKind::Table,
         block: index,
+        slot: None,
         spans: vec![RowSpan {
             text,
             style: theme::rule(),
@@ -106,6 +107,7 @@ fn band(cells: &[Lines], widths: &[usize], align: &[Align], index: usize) -> Vec
             Row {
                 kind: RowKind::Table,
                 block: index,
+                slot: None,
                 spans,
             }
         })
