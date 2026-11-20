@@ -114,6 +114,21 @@ pub fn inline(base: Style, style: InlineStyle, linked: bool) -> Style {
 /// Error frame and message colour.
 pub const ERROR: Color = Color::Rgb(243, 139, 168);
 
+/// Code box frame of a failed diagram, on the code background.
+pub fn error_border() -> Style {
+    Style::new().fg(ERROR).bg(CODE_BG)
+}
+
+/// Error message text, on the page background.
+pub fn error() -> Style {
+    Style::new().fg(ERROR).bg(BG)
+}
+
+/// Placeholder text of a diagram being rendered, on the page background.
+pub fn placeholder() -> Style {
+    Style::new().fg(MUTED).bg(BG)
+}
+
 /// Code box text: body foreground on the code background.
 pub fn code() -> Style {
     Style::new().fg(FG).bg(CODE_BG)
