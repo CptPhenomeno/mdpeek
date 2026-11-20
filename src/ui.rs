@@ -52,9 +52,7 @@ pub fn run(
     app.set_pictures(PictureSet::sliced(
         selection.picker(&detector),
         crate::theme::bg_rgba(),
-        selection.density(),
     ));
-    app.set_density(selection.density());
     app.set_message(format!("Graphics: {}", selection.label()));
     // Diagrams and images render in the background; results come back here.
     let (tx, rx) = mpsc::channel();

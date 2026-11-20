@@ -428,7 +428,7 @@ fn no_cell_has_the_default_background_with_a_picture_and_an_overlay_crossing_it(
     let mut app = pic_app(w, h);
     let mut picker = Picker::halfblocks();
     picker.set_protocol_type(ProtocolType::Iterm2);
-    let mut set = crate::graphics::PictureSet::sliced(picker, image::Rgba([26, 27, 38, 255]), 1);
+    let mut set = crate::graphics::PictureSet::sliced(picker, image::Rgba([26, 27, 38, 255]));
     set.insert(
         PictureKey::Diagram(0),
         image::DynamicImage::ImageRgba8(image::RgbaImage::new(40, 80)),
@@ -562,29 +562,6 @@ mod pictures {
     }
 
     const NATURAL: (u32, u32) = (1000, 400);
-
-    #[test]
-    fn density_doubles_the_job_pixels_but_keeps_the_slot_in_cells() {
-        let md = format!("```mermaid\ngraph TD\n A-->B\n```\n\n{}", many(5));
-        let run = |density: u32| {
-            let jobs = Jobs::default();
-            let mut app = App::new(doc(&md), "a.md".into());
-            app.set_density(density);
-            app.set_job_sink(Box::new(FakeSink(jobs.clone())));
-            app.resize(40, 20 + CHROME);
-            deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), NATURAL);
-            let slot = app.layout.rows.iter().find_map(|r| r.slot.clone()).unwrap();
-            (slot, last_job(&jobs, &PictureKey::Diagram(0), Mode::Render))
-        };
-        let (slot1, job1) = run(1);
-        let (slot2, job2) = run(2);
-        assert_eq!((job1.density, job2.density), (1, 2));
-        assert_eq!((job1.width, job1.height), (job2.width, job2.height));
-        assert_eq!(
-            (slot1.cols, slot1.rows, slot1.px),
-            (slot2.cols, slot2.rows, slot2.px)
-        );
-    }
 
     /// A diagram whose raster arrived at width 40, with a controllable clock.
     fn settled_diagram() -> (App, Jobs, FakeClock) {

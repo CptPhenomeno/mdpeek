@@ -100,17 +100,6 @@ impl Selection {
         picker
     }
 
-    /// Raster pixels per slot pixel (KB-72). Only iTerm2 gets 2: its rows are
-    /// sent in cell units (`graphics::iterm2`), so the terminal scales the
-    /// denser raster to the cell box. Kitty (placement size follows the pixel
-    /// size), Sixel (drawn at pixel size) and halfblocks would show it bigger.
-    pub fn density(&self) -> u32 {
-        match self.protocol {
-            ProtocolType::Iterm2 => 2,
-            ProtocolType::Kitty | ProtocolType::Sixel | ProtocolType::Halfblocks => 1,
-        }
-    }
-
     /// Human-readable protocol name, for the status bar.
     pub fn label(&self) -> &'static str {
         match self.protocol {
@@ -163,22 +152,6 @@ impl Detector for StdioDetector {
 mod tests {
     use super::*;
     use std::cell::Cell;
-
-    #[test]
-    fn every_protocol_draws_at_density_one() {
-        let density = |protocol| {
-            Selection {
-                protocol,
-                cell: (10, 20),
-                detected: false,
-            }
-            .density()
-        };
-        assert_eq!(density(ProtocolType::Iterm2), 1);
-        assert_eq!(density(ProtocolType::Kitty), 1);
-        assert_eq!(density(ProtocolType::Sixel), 1);
-        assert_eq!(density(ProtocolType::Halfblocks), 1);
-    }
 
     struct Fake {
         result: Result<Detection, DetectError>,
