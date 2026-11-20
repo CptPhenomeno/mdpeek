@@ -145,6 +145,11 @@ pub fn border(focused: bool) -> Style {
     Style::new().fg(if focused { ACCENT } else { LINE })
 }
 
+/// Frame around a focused diagram: accent on the page background.
+pub fn focus_frame() -> Style {
+    Style::new().fg(ACCENT).bg(BG)
+}
+
 pub fn status() -> Style {
     Style::new().fg(ACCENT)
 }
