@@ -58,11 +58,15 @@ pub fn run(doc: Document, rel_path: String, protocol: ProtocolChoice) -> io::Res
             terminal.draw(|f| app.render(f))?;
         }
         // Wake up regularly only while jobs are outstanding.
-        let timeout = if app.has_outstanding() {
+        let mut timeout = if app.has_outstanding() {
             RESULT_POLL
         } else {
             IDLE_POLL
         };
+        // The resize debounce deadline wakes the loop too.
+        if let Some(wait) = app.next_wakeup() {
+            timeout = timeout.min(wait);
+        }
         dirty = false;
         if event::poll(timeout)? {
             dirty = true;
@@ -73,6 +77,7 @@ pub fn run(doc: Document, rel_path: String, protocol: ProtocolChoice) -> io::Res
                 _ => {}
             }
         }
+        dirty |= app.tick();
         while let Ok(result) = rx.try_recv() {
             dirty = true;
             app.on_result(result);

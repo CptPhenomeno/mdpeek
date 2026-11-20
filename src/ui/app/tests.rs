@@ -542,6 +542,129 @@ mod pictures {
         )
     }
 
+    // ---- debounced re-rasterisation after a resize (KB-41) ----
+
+    use std::time::Duration;
+
+    #[derive(Debug, Clone, Default)]
+    struct FakeClock(Arc<Mutex<Duration>>);
+
+    impl crate::ui::pictures::Clock for FakeClock {
+        fn now(&self) -> Duration {
+            *self.0.lock().unwrap()
+        }
+    }
+
+    impl FakeClock {
+        fn advance(&self, ms: u64) {
+            *self.0.lock().unwrap() += Duration::from_millis(ms);
+        }
+    }
+
+    const NATURAL: (u32, u32) = (1000, 400);
+
+    /// A diagram whose raster arrived at width 40, with a controllable clock.
+    fn settled_diagram() -> (App, Jobs, FakeClock) {
+        let clock = FakeClock::default();
+        let jobs = Jobs::default();
+        let mut app = App::new(
+            doc(&format!("```mermaid\ngraph TD\n A-->B\n```\n\n{}", many(5))),
+            "a.md".into(),
+        );
+        app.set_clock(Box::new(clock.clone()));
+        app.set_job_sink(Box::new(FakeSink(jobs.clone())));
+        app.resize(40, 20 + CHROME);
+        deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), NATURAL);
+        (app, jobs, clock)
+    }
+
+    fn count(jobs: &Jobs) -> usize {
+        renders(jobs).len()
+    }
+
+    #[test]
+    fn resize_relayouts_immediately_and_re_rasterises_once_after_150_ms_without_further_resizes() {
+        let (mut app, jobs, clock) = settled_diagram();
+        assert_eq!(count(&jobs), 1);
+        let old = last_job(&jobs, &PictureKey::Diagram(0), Mode::Render);
+        app.resize(30, 20 + CHROME);
+        let slot = app.layout.rows.iter().find_map(|r| r.slot.clone()).unwrap();
+        assert_eq!(slot.px.0, 260, "layout follows the new width at once");
+        assert_eq!(count(&jobs), 1, "nothing is submitted yet");
+        clock.advance(149);
+        app.tick();
+        assert_eq!(count(&jobs), 1);
+        assert!(app.next_wakeup().is_some());
+        clock.advance(1);
+        app.tick();
+        assert_eq!(count(&jobs), 2);
+        let new = last_job(&jobs, &PictureKey::Diagram(0), Mode::Render);
+        assert_eq!(new.width, 260);
+        assert!(new.generation > old.generation);
+        app.tick();
+        assert_eq!(count(&jobs), 2, "once only");
+        assert!(app.next_wakeup().is_none());
+    }
+
+    #[test]
+    fn a_burst_of_resize_events_triggers_a_single_re_rasterisation() {
+        let (mut app, jobs, clock) = settled_diagram();
+        for width in [36, 33, 30, 28] {
+            app.resize(width, 20 + CHROME);
+            clock.advance(100);
+            app.tick();
+            assert_eq!(count(&jobs), 1, "still debouncing at width {width}");
+        }
+        clock.advance(150);
+        app.tick();
+        assert_eq!(count(&jobs), 2);
+        assert_eq!(
+            last_job(&jobs, &PictureKey::Diagram(0), Mode::Render).width,
+            240
+        );
+    }
+
+    #[test]
+    fn slots_whose_pixel_size_changed_show_the_placeholder_until_the_new_picture_arrives() {
+        let (mut app, jobs, clock) = settled_diagram();
+        let text = screen_text(&mut app, 40, 20 + CHROME);
+        assert!(text.contains('#'), "{text}");
+        app.resize(30, 20 + CHROME);
+        let text = screen_text(&mut app, 30, 20 + CHROME);
+        assert!(text.contains("Rendering diagram"), "{text}");
+        assert!(!text.contains('#'), "{text}");
+        clock.advance(150);
+        app.tick();
+        let text = screen_text(&mut app, 30, 20 + CHROME);
+        assert!(text.contains("Rendering diagram"), "{text}");
+        deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), NATURAL);
+        let text = screen_text(&mut app, 30, 20 + CHROME);
+        assert!(!text.contains("Rendering diagram"), "{text}");
+        assert!(text.contains('#'), "{text}");
+    }
+
+    #[test]
+    fn results_rendered_for_the_old_width_are_discarded() {
+        let (mut app, jobs, clock) = settled_diagram();
+        let old = last_job(&jobs, &PictureKey::Diagram(0), Mode::Render);
+        app.resize(30, 20 + CHROME);
+        clock.advance(150);
+        app.tick();
+        let image = Arc::new(RgbaImage::new(NATURAL.0, NATURAL.1));
+        app.on_result(result_of(
+            &old,
+            Outcome::Picture {
+                image,
+                natural: NATURAL,
+            },
+        ));
+        let text = screen_text(&mut app, 30, 20 + CHROME);
+        assert!(text.contains("Rendering diagram"), "{text}");
+        deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), NATURAL);
+        let text = screen_text(&mut app, 30, 20 + CHROME);
+        assert!(text.contains('#'), "{text}");
+    }
+
     #[test]
     fn diagram_slot_shows_the_rendering_placeholder_until_its_picture_arrives() {
         let (mut app, jobs) = pic_doc_app("```mermaid\ngraph TD\n A-->B\n```\n", 40, 12 + CHROME);

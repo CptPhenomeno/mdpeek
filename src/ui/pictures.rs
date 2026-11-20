@@ -11,11 +11,14 @@
 //!   straight away: the picture comes with its natural size, which sizes the
 //!   slot (a diagram stays a placeholder until then).
 //! * Results of an outdated generation are ignored; the generation grows when
-//!   the pane width changes, which also forgets what was outstanding.
+//!   the pane width changes, which also forgets what was outstanding. Slots
+//!   whose size changed are stale (placeholder) until the debounced
+//!   re-rasterisation (150 ms after the last resize) delivers a new raster.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use image::RgbaImage;
 
@@ -49,6 +52,31 @@ impl JobSink for WorkerSink {
     }
 }
 
+/// Monotonic time source of the resize debounce; tests drive their own.
+pub trait Clock: std::fmt::Debug {
+    /// Time elapsed since an arbitrary fixed origin.
+    fn now(&self) -> std::time::Duration;
+}
+
+/// The real clock: time since it was created.
+#[derive(Debug)]
+pub struct SystemClock(std::time::Instant);
+
+impl Default for SystemClock {
+    fn default() -> Self {
+        Self(std::time::Instant::now())
+    }
+}
+
+impl Clock for SystemClock {
+    fn now(&self) -> Duration {
+        self.0.elapsed()
+    }
+}
+
+/// Quiet time after the last resize before pictures are re-rasterised (SPEC §3.4.6).
+pub const RESIZE_DEBOUNCE: Duration = Duration::from_millis(150);
+
 /// A raster that arrived and must be handed to the picture set.
 pub struct Arrived {
     pub key: PictureKey,
@@ -77,6 +105,12 @@ pub struct Pictures {
     inflight: HashSet<(PictureKey, (u32, u32))>,
     generation: u64,
     sink: Option<Box<dyn JobSink>>,
+    clock: Box<dyn Clock>,
+    /// Pictures whose raster no longer fits their slot (SPEC §4.21): they show
+    /// the placeholder until a raster of the current generation arrives.
+    stale: HashSet<PictureKey>,
+    /// When re-rasterisation may start, after the last resize.
+    due: Option<Duration>,
 }
 
 impl Pictures {
@@ -98,7 +132,52 @@ impl Pictures {
             inflight: HashSet::new(),
             generation: 1,
             sink: None,
+            clock: Box::new(SystemClock::default()),
+            stale: HashSet::new(),
+            due: None,
         }
+    }
+
+    pub fn set_clock(&mut self, clock: Box<dyn Clock>) {
+        self.clock = clock;
+    }
+
+    /// Whether the picture of `key` is outdated and must not be drawn.
+    pub fn is_stale(&self, key: &PictureKey) -> bool {
+        self.stale.contains(key)
+    }
+
+    /// A resize changed the slots of `changed` (or is still settling): their
+    /// rasters are outdated, outstanding jobs are superseded and the debounce
+    /// restarts. Returns whether anything is pending.
+    pub fn invalidate(&mut self, changed: impl IntoIterator<Item = PictureKey>) -> bool {
+        for key in changed {
+            self.rendered.remove(&key);
+            self.stale.insert(key);
+        }
+        if self.stale.is_empty() {
+            return false;
+        }
+        self.due = Some(self.clock.now() + RESIZE_DEBOUNCE);
+        true
+    }
+
+    /// Whether the debounce has elapsed; it is then over.
+    pub fn settle(&mut self) -> bool {
+        let due = self.due.is_some_and(|d| self.clock.now() >= d);
+        if due {
+            self.due = None;
+        }
+        due
+    }
+
+    /// Time left until re-rasterisation may start, while a debounce runs.
+    pub fn wakeup(&self) -> Option<Duration> {
+        self.due.map(|d| d.saturating_sub(self.clock.now()))
+    }
+
+    fn settling(&self) -> bool {
+        self.due.is_some_and(|d| self.clock.now() < d)
     }
 
     pub fn set_sink(&mut self, sink: Box<dyn JobSink>) {
@@ -140,6 +219,9 @@ impl Pictures {
         let key = result.key;
         let size = (result.width, result.height);
         self.inflight.remove(&(key.clone(), size));
+        if matches!(result.outcome, Outcome::Picture { .. } | Outcome::Error(_)) {
+            self.stale.remove(&key);
+        }
         match result.outcome {
             Outcome::Picture { image, natural } => {
                 if let PictureKey::Diagram(n) = key {
@@ -198,7 +280,9 @@ impl Pictures {
             let Some(source) = self.render_source(slot.key.clone(), slot.known) else {
                 continue;
             };
-            if self.covers(&slot.key, slot.px) {
+            if self.covers(&slot.key, slot.px)
+                || (self.settling() && self.stale.contains(&slot.key))
+            {
                 continue;
             }
             let distance = if index >= scroll + height {
@@ -265,6 +349,9 @@ impl PictureSizes for Pictures {
 
 impl DiagramStates for Pictures {
     fn state(&self, n: usize) -> DiagramState {
+        if self.stale.contains(&PictureKey::Diagram(n)) {
+            return DiagramState::Pending(None);
+        }
         self.states
             .get(&n)
             .cloned()

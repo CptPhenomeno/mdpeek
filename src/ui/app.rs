@@ -18,7 +18,7 @@ use crate::theme;
 #[cfg(test)]
 mod tests;
 
-use super::pictures::{JobSink, Pictures};
+use super::pictures::{Clock, JobSink, Pictures};
 
 /// Cell size in pixels until the terminal is queried.
 const CELL: (u16, u16) = (10, 20);
@@ -102,11 +102,35 @@ impl App {
         }
         if width_changed || (height_changed && self.layout.rows.iter().any(|r| r.slot.is_some())) {
             let anchor = self.top_anchor();
+            let before = self.slot_sizes();
             self.relayout();
+            // Rasters of slots that changed size are outdated: placeholders
+            // until the debounced re-rasterisation arrives (SPEC §4.21).
+            let after = self.slot_sizes();
+            let changed: Vec<PictureKey> = after
+                .iter()
+                .filter(|(key, px)| before.get(*key).is_some_and(|b| b != *px))
+                .map(|(key, _)| key.clone())
+                .collect();
+            if self.jobs.invalidate(changed) {
+                self.jobs.next_generation();
+                self.relayout();
+            }
             self.scroll = anchor.map_or(0, |a| self.scroll_of(a));
         }
         self.scroll = self.scroll.min(self.max_scroll());
         self.request_pictures();
+    }
+
+    /// Pixel size of every picture slot that has a known size.
+    fn slot_sizes(&self) -> std::collections::HashMap<PictureKey, (u32, u32)> {
+        self.layout
+            .rows
+            .iter()
+            .filter_map(|r| r.slot.as_ref())
+            .filter(|s| s.known)
+            .map(|s| (s.key.clone(), s.px))
+            .collect()
     }
 
     /// Index of the first visible row.
@@ -174,6 +198,25 @@ impl App {
             );
         }
         self.relayout_keeping_position();
+    }
+
+    /// Replaces the clock the resize debounce reads (tests).
+    pub fn set_clock(&mut self, clock: Box<dyn Clock>) {
+        self.jobs.set_clock(clock);
+    }
+
+    /// Submits re-rasterisation once the debounce has elapsed; `true` when it did.
+    pub fn tick(&mut self) -> bool {
+        if !self.jobs.settle() {
+            return false;
+        }
+        self.request_pictures();
+        true
+    }
+
+    /// How long until the debounce is due, when one is pending.
+    pub fn next_wakeup(&self) -> Option<std::time::Duration> {
+        self.jobs.wakeup()
     }
 
     /// Whether render jobs are still outstanding.
@@ -275,7 +318,7 @@ impl App {
                 continue;
             };
             let slot_rows = usize::from(slot.rows);
-            if !slot.known || index + slot_rows <= self.scroll {
+            if !slot.known || self.jobs.is_stale(&slot.key) || index + slot_rows <= self.scroll {
                 continue;
             }
             let (Ok(row), Ok(scroll)) = (i32::try_from(index), i32::try_from(self.scroll)) else {
