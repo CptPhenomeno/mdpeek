@@ -17,6 +17,7 @@ pulldown-cmark = "0.13.6"
 ratatui = "0.30.2"
 ratatui-image = { version = "11.1.0", default-features = false, features = ["image-defaults", "crossterm"] }
 resvg = "0.50.0"
+serde_json = "1"
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 unicode-width = "0.2.3"
 
@@ -24,7 +25,6 @@ unicode-width = "0.2.3"
 assert_cmd = "2.2.2"
 insta = "1.49.0"
 tempfile = "3.27.0"
-serde_json = "1"
 
 [lints.rust]
 unsafe_code = "forbid"
