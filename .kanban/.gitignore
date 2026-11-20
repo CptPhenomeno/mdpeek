@@ -2,3 +2,5 @@
 kb.db
 kb.db-wal
 kb.db-shm
+# The board export is local too.
+board.md
