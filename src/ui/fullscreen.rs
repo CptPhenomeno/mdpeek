@@ -332,22 +332,24 @@ mod tests {
     }
 
     #[test]
-    fn small_picture_fits_at_natural_size_never_upscaled() {
+    fn small_picture_is_enlarged_to_fit_the_screen() {
         let mut s = ZoomState::new((100.0, 50.0), (500.0, 500.0));
-        assert!((s.fit_scale() - 1.0).abs() < EPS);
+        assert!((s.fit_scale() - 5.0).abs() < EPS);
         assert_eq!(s.percent(), 100);
-        assert_eq!(s.dest_size(), (100.0, 50.0));
+        assert_eq!(s.dest_size(), (500.0, 250.0));
         let r = s.source_rect();
         assert_eq!((r.x, r.y, r.w, r.h), (0.0, 0.0, 100.0, 50.0));
         for d in [PanDir::Left, PanDir::Right, PanDir::Up, PanDir::Down] {
             s.pan(d);
         }
         assert_eq!(s.center(), (50.0, 25.0));
-        // Zoom still works up to x8 of natural size.
+        // Zoom goes up to x8 of fit, and the raster stays bounded by the screen.
         for _ in 0..30 {
             s.zoom_in();
         }
-        assert!((s.scale() - 8.0).abs() < EPS);
+        assert!((s.scale() - 40.0).abs() < EPS);
+        let (dw, dh) = s.dest_size();
+        assert!(dw <= 500.0 + EPS && dh <= 500.0 + EPS);
     }
 
     #[test]
