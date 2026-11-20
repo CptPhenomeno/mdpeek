@@ -9,6 +9,14 @@ use ratatui::style::{Color, Modifier, Style};
 
 use crate::doc::Style as InlineStyle;
 
+/// [`BG`] as the RGBA colour pictures are composited over.
+pub fn bg_rgba() -> image::Rgba<u8> {
+    match BG {
+        Color::Rgb(r, g, b) => image::Rgba([r, g, b, 255]),
+        _ => image::Rgba([0, 0, 0, 255]),
+    }
+}
+
 /// Page background, painted on every cell.
 pub const BG: Color = Color::Rgb(26, 27, 38);
 /// Body text foreground.
@@ -101,4 +109,15 @@ pub fn inline(base: Style, style: InlineStyle, linked: bool) -> Style {
         out = out.patch(link());
     }
     out
+}
+
+#[cfg(test)]
+mod bg_tests {
+    use super::*;
+
+    #[test]
+    fn bg_rgba_matches_bg() {
+        assert_eq!(BG, Color::Rgb(26, 27, 38));
+        assert_eq!(bg_rgba(), image::Rgba([26, 27, 38, 255]));
+    }
 }

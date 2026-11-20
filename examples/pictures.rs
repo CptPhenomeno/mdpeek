@@ -11,7 +11,7 @@
 use std::{io, path::PathBuf};
 
 use crossterm::event::{self, Event, KeyCode};
-use image::{DynamicImage, Rgba, RgbaImage};
+use image::{DynamicImage, RgbaImage};
 use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect, widgets::Paragraph};
 use ratatui_image::picker::{Picker, ProtocolType};
 use readmd::{
@@ -76,7 +76,7 @@ fn main() -> io::Result<()> {
     let font = picker.font_size();
     let mut app = App::new(doc, "sample-assets/pictures.md".into());
     app.set_cell((font.width, font.height));
-    let mut set = PictureSet::sliced(picker, Rgba([26, 27, 38, 255]));
+    let mut set = PictureSet::sliced(picker, readmd::theme::bg_rgba());
     set.insert(
         PictureKey::Image(assets.join("gradient.png")),
         image::open(assets.join("gradient.png")).unwrap(),
