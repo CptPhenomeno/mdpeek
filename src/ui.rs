@@ -1,6 +1,7 @@
 //! App state, event loop, panes and terminal lifecycle.
 
 pub mod app;
+pub mod fullscreen;
 pub mod keymap;
 pub mod opener;
 pub mod overlay;
