@@ -2,7 +2,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser;
-use readmd::cli::Args;
+use readmd::cli::{Args, CliError, StartTarget};
 use readmd::doc::Document;
 use readmd::{tree, ui};
 
@@ -17,8 +17,13 @@ fn main() -> ExitCode {
     let start = match tree::start(&config.target) {
         Ok(start) => start,
         Err(err) => {
+            let StartTarget::Directory(root) = &config.target else {
+                eprintln!("readmd: {err}");
+                return ExitCode::FAILURE;
+            };
+            let err = CliError::Unreadable(root.clone(), err);
             eprintln!("readmd: {err}");
-            return ExitCode::FAILURE;
+            return err.exit_code();
         }
     };
     let (doc, rel_path) = match &start.initial_file {

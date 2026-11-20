@@ -125,11 +125,10 @@ pub fn start(target: &StartTarget) -> io::Result<Start> {
                 Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
                 _ => PathBuf::from("."),
             };
-            let tree = Some(scan(&root)?);
             Ok(Start {
                 root,
                 sidebar_visible: false,
-                tree,
+                tree: None,
                 initial_file: Some(file.clone()),
             })
         }
