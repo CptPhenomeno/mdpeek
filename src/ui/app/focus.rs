@@ -5,7 +5,7 @@ use std::ops::Range;
 use ratatui::{buffer::Buffer, layout::Rect, style::Modifier};
 
 use super::App;
-use crate::layout::{Focusable, MARGIN, PictureKey, State};
+use crate::layout::{Focusable, MARGIN, PictureKey, RowKind, State};
 use crate::theme;
 
 /// Stable identity of a focusable, independent of row numbers.
@@ -162,18 +162,29 @@ impl App {
                         buf[pos].set_symbol(symbol).set_style(style);
                     }
                 };
-                for col in left + 1..right {
-                    put(top, col, "─");
-                    put(bottom, col, "─");
-                }
+                // Only free cells are decorated: the bars sit in the columns beside
+                // the slot (margin or the picture rows' own blank cells), and an
+                // edge goes on a row only when that row is spacing.
+                let blank = |row: isize| {
+                    usize::try_from(row)
+                        .ok()
+                        .and_then(|r| self.layout.rows.get(r))
+                        .is_some_and(|r| r.kind == RowKind::Blank)
+                };
                 for row in rows.clone() {
                     put(row as isize, left, "│");
                     put(row as isize, right, "│");
                 }
-                put(top, left, "┌");
-                put(top, right, "┐");
-                put(bottom, left, "└");
-                put(bottom, right, "┘");
+                for (row, (l, r)) in [(top, ("┌", "┐")), (bottom, ("└", "┘"))] {
+                    if !blank(row) {
+                        continue;
+                    }
+                    for col in left + 1..right {
+                        put(row, col, "─");
+                    }
+                    put(row, left, l);
+                    put(row, right, r);
+                }
             }
         }
     }
