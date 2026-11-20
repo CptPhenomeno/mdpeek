@@ -7,6 +7,7 @@
 
 use image::RgbaImage;
 use resvg::{tiny_skia, usvg};
+use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
 /// Why an SVG could not be rasterised.
@@ -59,6 +60,22 @@ pub fn intrinsic_size(svg: &str) -> Result<(f32, f32), RasterError> {
     Ok((size.width(), size.height()))
 }
 
+/// Pixel size for a picture of natural size `w` x `h` fitted into
+/// `max_w` x `max_h`: natural size (rounded up) when it fits, otherwise scaled
+/// down with the aspect kept so the binding limit is met exactly. Never scales
+/// up. Shared by diagrams, SVG and bitmaps so they all round identically.
+/// Callers guarantee positive `w`, `h`, `max_w` and `max_h`.
+fn fit_size(w: f32, h: f32, max_w: u32, max_h: u32) -> (u32, u32) {
+    let (mw, mh) = (max_w as f32, max_h as f32);
+    if w <= mw && h <= mh {
+        (w.ceil() as u32, h.ceil() as u32)
+    } else if mw / w <= mh / h {
+        (max_w, ((h * mw / w).round() as u32).clamp(1, max_h))
+    } else {
+        (((w * mh / h).round() as u32).clamp(1, max_w), max_h)
+    }
+}
+
 /// Rasterise at natural size, scaled down (aspect kept) to fit `max_w` x `max_h`.
 ///
 /// Never scales up. When a limit binds, that dimension equals the limit exactly.
@@ -69,14 +86,7 @@ pub fn rasterise(svg: &str, max_w: u32, max_h: u32) -> Result<RgbaImage, RasterE
     if !(w > 0.0 && h > 0.0) || max_w == 0 || max_h == 0 {
         return Err(RasterError::Size);
     }
-    let (mw, mh) = (max_w as f32, max_h as f32);
-    let (pw, ph) = if w <= mw && h <= mh {
-        (w.ceil() as u32, h.ceil() as u32)
-    } else if mw / w <= mh / h {
-        (max_w, ((h * mw / w).round() as u32).clamp(1, max_h))
-    } else {
-        (((w * mh / h).round() as u32).clamp(1, max_w), max_h)
-    };
+    let (pw, ph) = fit_size(w, h, max_w, max_h);
     let mut pm = tiny_skia::Pixmap::new(pw, ph).ok_or(RasterError::Size)?;
     let transform = tiny_skia::Transform::from_scale(pw as f32 / w, ph as f32 / h);
     resvg::render(&tree, transform, &mut pm.as_mut());
@@ -93,18 +103,73 @@ pub fn rasterise(svg: &str, max_w: u32, max_h: u32) -> Result<RgbaImage, RasterE
     RgbaImage::from_raw(pw, ph, data).ok_or(RasterError::Size)
 }
 
-/// Natural pixel size of a local image, read without decoding the pixels.
-pub fn image_size(_path: &std::path::Path) -> Result<(u32, u32), RasterError> {
-    Err(RasterError::Size)
+fn is_svg(path: &Path, head: &[u8]) -> bool {
+    let ext = path.extension().and_then(|e| e.to_str());
+    if ext.is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
+        return true;
+    }
+    // No extension hint: sniff for an <svg root in the first bytes.
+    let head = String::from_utf8_lossy(head);
+    head.contains("<svg")
 }
 
-/// Decode a local image to straight-alpha RGBA, scaled down to fit.
-pub fn decode_image(
-    _path: &std::path::Path,
-    _max_w: u32,
-    _max_h: u32,
-) -> Result<RgbaImage, RasterError> {
-    Err(RasterError::Size)
+fn read_head(path: &Path) -> Result<Vec<u8>, RasterError> {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|f| f.take(1024).read_to_end(&mut buf))
+        .map_err(|_| RasterError::NotFound)?;
+    Ok(buf)
+}
+
+fn read_svg(path: &Path) -> Result<String, RasterError> {
+    std::fs::read_to_string(path).map_err(|_| RasterError::NotFound)
+}
+
+/// Natural pixel size of a local image, read from the header without decoding
+/// the pixels (SVG: parsed, rounded up like `rasterise`). Missing or
+/// unreadable files are `NotFound` (SPEC §3.5.3).
+pub fn image_size(path: &Path) -> Result<(u32, u32), RasterError> {
+    let head = read_head(path)?;
+    if is_svg(path, &head) {
+        let (w, h) = intrinsic_size(&read_svg(path)?).map_err(|_| RasterError::NotFound)?;
+        return Ok((w.ceil() as u32, h.ceil() as u32));
+    }
+    image::ImageReader::open(path)
+        .and_then(|r| r.with_guessed_format())
+        .map_err(|_| RasterError::NotFound)?
+        .into_dimensions()
+        .map_err(|_| RasterError::NotFound)
+}
+
+/// Decode a local image (PNG, JPEG, WebP, GIF first frame, SVG) to
+/// straight-alpha RGBA, scaled down to fit `max_w` x `max_h` and never up.
+/// Missing, unreadable or corrupt files are `NotFound` (SPEC §3.5.3).
+pub fn decode_image(path: &Path, max_w: u32, max_h: u32) -> Result<RgbaImage, RasterError> {
+    let head = read_head(path)?;
+    if is_svg(path, &head) {
+        return rasterise(&read_svg(path)?, max_w, max_h).map_err(|_| RasterError::NotFound);
+    }
+    let img = image::ImageReader::open(path)
+        .and_then(|r| r.with_guessed_format())
+        .map_err(|_| RasterError::NotFound)?
+        .decode()
+        .map_err(|_| RasterError::NotFound)?
+        .into_rgba8();
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 || max_w == 0 || max_h == 0 {
+        return Err(RasterError::Size);
+    }
+    let (pw, ph) = fit_size(w as f32, h as f32, max_w, max_h);
+    if (pw, ph) == (w, h) {
+        return Ok(img);
+    }
+    Ok(image::imageops::resize(
+        &img,
+        pw,
+        ph,
+        image::imageops::FilterType::Lanczos3,
+    ))
 }
 
 #[cfg(test)]
@@ -268,7 +333,7 @@ mod tests {
         // Keep the header, drop the pixel data: a full decode would fail.
         let bytes = std::fs::read(&p).unwrap();
         let cut = dir.path().join("cut.png");
-        std::fs::write(&cut, &bytes[..33.min(bytes.len())]).unwrap();
+        std::fs::write(&cut, &bytes[..64.min(bytes.len())]).unwrap();
         assert_eq!(image_size(&cut).unwrap(), (64, 32));
         assert!(decode_image(&cut, 100, 100).is_err());
     }
