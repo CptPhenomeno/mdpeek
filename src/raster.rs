@@ -212,6 +212,16 @@ mod tests {
     fn svg(w: u32, h: u32, body: &str) -> String {
         format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}">{body}</svg>"#)
     }
+    #[test]
+    fn region_raster_draws_only_the_requested_part_at_the_scale() {
+        // Left half blue, right half red; ask for the right half at x2.
+        let body = r##"<rect width="50" height="100" fill="#00f"/><rect x="50" width="50" height="100" fill="#f00"/>"##;
+        let img = rasterise_region(&svg(100, 100, body), (50.0, 0.0), 2.0, (100, 200)).unwrap();
+        assert_eq!((img.width(), img.height()), (100, 200));
+        assert_eq!(img.get_pixel(1, 1).0, [255, 0, 0, 255]);
+        assert_eq!(img.get_pixel(98, 198).0, [255, 0, 0, 255]);
+    }
+
     const RECT: &str = r##"<rect width="100%" height="100%" fill="#f00"/>"##;
 
     #[test]

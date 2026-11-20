@@ -63,6 +63,11 @@ pub fn run(
     let (tx, rx) = mpsc::channel();
     let worker = RenderWorker::new(PictureCache::with_default_limit(), tx, RENDER_THREADS);
     app.set_job_sink(Box::new(pictures::WorkerSink(worker)));
+    // The full-screen view renders on its own thread.
+    let (view_tx, view_rx) = mpsc::channel();
+    if let Some(sink) = view_worker::spawn(view_tx) {
+        app.set_view_sink(Box::new(sink));
+    }
     let mut dirty = true;
     while !app.should_quit() {
         if dirty {
@@ -92,6 +97,10 @@ pub fn run(
         while let Ok(result) = rx.try_recv() {
             dirty = true;
             app.on_result(result);
+        }
+        while let Ok(reply) = view_rx.try_recv() {
+            dirty = true;
+            app.on_view_reply(reply);
         }
     }
     Ok(())

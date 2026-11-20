@@ -63,6 +63,12 @@ pub struct App {
     opener: Box<dyn Opener>,
     /// Diagram Enter asked to see full screen; the full-screen view consumes it.
     fullscreen_request: Option<PictureKey>,
+    /// The open full-screen view, if any.
+    view: Option<fullscreen::View>,
+    /// Where the view's render requests go.
+    view_sink: Option<Box<dyn super::view_worker::ViewSink>>,
+    /// Generation of the last view request: older replies are dropped.
+    view_generation: u64,
     quit: bool,
 }
 
@@ -93,6 +99,9 @@ impl App {
             focus: None,
             opener: Box::new(super::opener::Unavailable),
             fullscreen_request: None,
+            view: None,
+            view_sink: None,
+            view_generation: 0,
             quit: false,
         };
         app.relayout();
@@ -101,6 +110,11 @@ impl App {
 
     /// Terminal size changed (or is known for the first time); the top row stays put.
     pub fn resize(&mut self, width: u16, height: u16) {
+        self.resize_document(width, height);
+        self.resize_view();
+    }
+
+    fn resize_document(&mut self, width: u16, height: u16) {
         let first = !self.sized;
         self.sized = true;
         if self.size == (width, height) {
@@ -223,6 +237,9 @@ impl App {
 
     /// Submits re-rasterisation once the debounce has elapsed; `true` when it did.
     pub fn tick(&mut self) -> bool {
+        if self.open_view() {
+            return true;
+        }
         if !self.jobs.settle() {
             return false;
         }
@@ -237,7 +254,7 @@ impl App {
 
     /// Whether render jobs are still outstanding.
     pub fn has_outstanding(&self) -> bool {
-        self.jobs.has_outstanding()
+        self.jobs.has_outstanding() || self.view_outstanding()
     }
 
     fn request_pictures(&mut self) {
@@ -281,6 +298,10 @@ impl App {
             return;
         }
         self.message = None;
+        if self.view.is_some() {
+            self.handle_view_key(key);
+            return;
+        }
         let Some(action) = action_for(key) else {
             return;
         };
@@ -306,6 +327,9 @@ impl App {
     }
 
     pub fn handle_mouse(&mut self, mouse: MouseEvent) {
+        if self.view.is_some() {
+            return;
+        }
         let rows = WHEEL_ROWS as isize;
         match mouse.kind {
             MouseEventKind::ScrollDown => self.scroll_by(rows),
@@ -318,6 +342,10 @@ impl App {
     pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
         self.resize(area.width, area.height);
+        if self.view.is_some() {
+            self.render_view(frame);
+            return;
+        }
         let pane = Rect {
             height: area.height.saturating_sub(STATUS_ROWS),
             ..area
