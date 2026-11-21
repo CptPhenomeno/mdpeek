@@ -51,29 +51,81 @@ impl SidebarNav {
     /// Top-level entries are always visible (the root is implicitly expanded);
     /// the ancestors of `open_file` start expanded and it is marked.
     pub fn new(nodes: Vec<Node>, open_file: Option<&Path>) -> Self {
-        let _ = (nodes, open_file);
-        Self::default()
+        let mut nav = Self {
+            nodes,
+            ..Self::default()
+        };
+        nav.set_open_file(open_file);
+        if nav.selected.is_none() {
+            nav.selected = nav.rows().first().map(|r| r.path.clone());
+        }
+        nav
     }
 
     /// Replace the tree after a rescan, keeping expansion and selection where
     /// the paths still exist.
     pub fn rebuild(&mut self, nodes: Vec<Node>) {
-        let _ = nodes;
+        let mut dirs = HashSet::new();
+        collect_dirs(&nodes, &mut dirs);
+        self.expanded.retain(|p| dirs.contains(p));
+        self.nodes = nodes;
+        let rows = self.rows();
+        let kept = self
+            .selected
+            .as_ref()
+            .is_some_and(|s| rows.iter().any(|r| &r.path == s));
+        if !kept {
+            self.selected = rows.first().map(|r| r.path.clone());
+        }
     }
 
-    /// Mark `path` as open and expand its ancestors.
+    /// Mark `path` as open and expand its ancestors; it becomes the selection
+    /// when it is in the tree.
     pub fn set_open_file(&mut self, path: Option<&Path>) {
-        let _ = path;
+        self.open_file = path.map(Path::to_path_buf);
+        let Some(path) = path else { return };
+        let mut dirs = HashSet::new();
+        collect_dirs(&self.nodes, &mut dirs);
+        for ancestor in path.ancestors().skip(1) {
+            if dirs.contains(ancestor) {
+                self.expanded.insert(ancestor.to_path_buf());
+            }
+        }
+        if self.rows().iter().any(|r| r.path == path) {
+            self.selected = Some(path.to_path_buf());
+        }
     }
 
     /// Visible rows, top to bottom.
     pub fn rows(&self) -> Vec<Row> {
-        Vec::new()
+        let mut rows = Vec::new();
+        self.flatten(&self.nodes, 0, &mut rows);
+        rows
+    }
+
+    fn flatten(&self, nodes: &[Node], depth: usize, out: &mut Vec<Row>) {
+        for node in nodes {
+            let expanded = self.expanded.contains(node.path());
+            out.push(Row {
+                name: node.name().to_string(),
+                path: node.path().to_path_buf(),
+                depth,
+                is_dir: matches!(node, Node::Dir { .. }),
+                expanded,
+                open: self.open_file.as_deref() == Some(node.path()),
+            });
+            if let Node::Dir { children, .. } = node
+                && expanded
+            {
+                self.flatten(children, depth + 1, out);
+            }
+        }
     }
 
     /// Index of the selection in `rows()`, for scrolling the pane.
     pub fn selected_index(&self) -> Option<usize> {
-        None
+        let sel = self.selected.as_ref()?;
+        self.rows().iter().position(|r| &r.path == sel)
     }
 
     pub fn selected_path(&self) -> Option<&Path> {
@@ -81,8 +133,43 @@ impl SidebarNav {
     }
 
     pub fn handle(&mut self, key: NavKey) -> Outcome {
-        let _ = key;
+        let rows = self.rows();
+        if rows.is_empty() {
+            return Outcome::None;
+        }
+        let idx = self.selected_index().unwrap_or(0);
+        let row = &rows[idx];
+        let select = |nav: &mut Self, i: usize| nav.selected = Some(rows[i].path.clone());
+        match key {
+            NavKey::Up => select(self, idx.saturating_sub(1)),
+            NavKey::Down => select(self, (idx + 1).min(rows.len() - 1)),
+            NavKey::Home => select(self, 0),
+            NavKey::End => select(self, rows.len() - 1),
+            NavKey::Enter | NavKey::Right => {
+                if row.is_dir {
+                    self.expanded.insert(row.path.clone());
+                } else if key == NavKey::Enter {
+                    return Outcome::Open(row.path.clone());
+                }
+            }
+            NavKey::Left => {
+                if row.is_dir && row.expanded {
+                    self.expanded.remove(&row.path);
+                } else if let Some(p) = rows[..idx].iter().rposition(|r| r.depth < row.depth) {
+                    select(self, p);
+                }
+            }
+        }
         Outcome::None
+    }
+}
+
+fn collect_dirs(nodes: &[Node], out: &mut HashSet<PathBuf>) {
+    for node in nodes {
+        if let Node::Dir { path, children, .. } = node {
+            out.insert(path.clone());
+            collect_dirs(children, out);
+        }
     }
 }
 
