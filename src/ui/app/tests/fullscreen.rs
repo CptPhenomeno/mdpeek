@@ -160,6 +160,19 @@ fn esc_returns_to_the_document_with_the_same_scroll_position_and_focus() {
 }
 
 #[test]
+fn q_leaves_the_full_screen_view_instead_of_quitting() {
+    let (mut app, requests) = setup(DIAGRAM);
+    press(&mut app, KeyCode::Tab);
+    press(&mut app, KeyCode::Enter);
+    app.tick();
+    reply_natural(&mut app, &requests, (400, 200));
+    assert!(app.view_open());
+    press(&mut app, KeyCode::Char('q'));
+    assert!(!app.view_open());
+    assert!(!app.should_quit());
+}
+
+#[test]
 fn in_text_mode_the_view_shows_the_text_output_scrollable_with_the_arrow_keys() {
     let (mut app, requests) = setup(DIAGRAM);
     app.set_text_mode(true);
