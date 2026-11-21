@@ -21,6 +21,7 @@ pub use areas::{Areas, areas};
 mod click;
 mod focus;
 mod fullscreen;
+mod search;
 mod sidebar;
 #[cfg(test)]
 mod tests;
@@ -74,6 +75,10 @@ pub struct App {
     view_generation: u64,
     /// Diagram last clicked and when, for the double click.
     last_click: Option<(PictureKey, std::time::Duration)>,
+    /// Matches of the search and the current one (SPEC §3.9).
+    search: crate::search::Search,
+    /// The search input is open and owns the keyboard.
+    search_input: bool,
     quit: bool,
 }
 
@@ -108,6 +113,8 @@ impl App {
             view_sink: None,
             view_generation: 0,
             last_click: None,
+            search: crate::search::Search::new(),
+            search_input: false,
             quit: false,
         };
         app.relayout();
@@ -306,10 +313,9 @@ impl App {
     }
 
     /// Whether a text input owns the keyboard. Letter keys are then typed as
-    /// text, not run as commands. Hook for the search input (KB-54), which
-    /// makes this true while it is open and consumes the typed characters.
+    /// text, not run as commands: true while the search input is open.
     fn text_input_open(&self) -> bool {
-        false
+        self.search_input
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -319,6 +325,10 @@ impl App {
         self.message = None;
         if self.view.is_some() {
             self.handle_view_key(key);
+            return;
+        }
+        if self.text_input_open() && self.search_input_key(key) {
+            self.request_pictures();
             return;
         }
         let action = match (self.text_input_open(), self.sidebar.focused) {
@@ -342,7 +352,10 @@ impl App {
             }
             Action::FocusNext => self.focus_step(true),
             Action::FocusPrev => self.focus_step(false),
-            Action::ClearFocus => self.clear_focus(),
+            Action::Escape => self.escape(),
+            Action::SearchOpen => self.open_search(),
+            Action::SearchNext => self.search_step(true),
+            Action::SearchPrev => self.search_step(false),
             Action::Activate => self.activate(),
             Action::Quit => self.quit = true,
             Action::ToggleSidebar => self.toggle_sidebar(),
@@ -392,6 +405,7 @@ impl App {
         frame.render_widget(block, document);
         frame.render_widget(Paragraph::new(self.pane_lines(inner.height)), inner);
         self.draw_pictures(inner, frame.buffer_mut());
+        self.draw_search(inner, frame.buffer_mut());
         self.draw_focus(inner, frame.buffer_mut());
         frame.render_widget(Paragraph::new(self.status_line(status.width)), status);
     }
@@ -460,6 +474,7 @@ impl App {
             },
         );
         self.validate_focus();
+        self.search.relayout(&self.layout);
     }
 
     fn first_row_of(&self, block: usize) -> Option<usize> {
@@ -525,16 +540,20 @@ impl App {
 
     fn status_line(&self, width: u16) -> Line<'static> {
         let left = match &self.message {
+            _ if self.search_input => format!(" Search: {}_", self.search.query()),
             Some(message) => format!(" {} | {message}", self.rel_path),
             None => format!(" {}", self.rel_path),
         };
-        // The mode area: search joins it later.
         let mode = if self.text_mode {
             "Text diagrams | "
         } else {
             ""
         };
-        let right = format!("{mode}{}% ", self.percent());
+        let found = self
+            .search_status()
+            .map(|s| format!("{s} | "))
+            .unwrap_or_default();
+        let right = format!("{found}{mode}{}% ", self.percent());
         let pad = usize::from(width).saturating_sub(left.width() + right.width());
         let text = format!("{left}{}{right}", " ".repeat(pad));
         Line::styled(text, theme::status())

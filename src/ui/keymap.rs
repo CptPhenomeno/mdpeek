@@ -16,7 +16,8 @@ pub enum Action {
     ToggleTextDiagrams,
     FocusNext,
     FocusPrev,
-    ClearFocus,
+    /// Esc: closes the search input, else clears the search, else the focus.
+    Escape,
     Activate,
     Quit,
     // Search (SPEC §3.9).
@@ -213,9 +214,9 @@ pub const BINDINGS: &[Binding] = &[
     bind(
         KeyCode::Esc,
         NONE,
-        Action::ClearFocus,
+        Action::Escape,
         "Esc",
-        "Clear the focus",
+        "Close the search input, clear the search, or clear the focus",
     ),
     bind(
         KeyCode::Enter,

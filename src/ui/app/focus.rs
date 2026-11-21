@@ -110,6 +110,21 @@ impl App {
         self.scroll = self.scroll.min(self.max_scroll());
     }
 
+    /// Screen cell of document `row` and content column `col`, when visible in `pane`.
+    pub(super) fn cell_at(&self, pane: Rect, row: usize, col: i32) -> Option<(u16, u16)> {
+        let y = i32::from(pane.y) + i32::try_from(row).ok()? - i32::try_from(self.scroll).ok()?;
+        let x = i32::from(pane.x) + i32::from(MARGIN) + col;
+        let inside = x >= i32::from(pane.x)
+            && x < i32::from(pane.x + pane.width)
+            && y >= i32::from(pane.y)
+            && y < i32::from(pane.y + pane.height);
+        if inside {
+            Some((u16::try_from(x).ok()?, u16::try_from(y).ok()?))
+        } else {
+            None
+        }
+    }
+
     /// Marks the focused item on `buf`; `pane` is the inner area of the document.
     pub(super) fn draw_focus(&self, pane: Rect, buf: &mut Buffer) {
         if self.layout.state != State::Ready {
@@ -118,20 +133,7 @@ impl App {
         let Some(item) = self.focused() else {
             return;
         };
-        let cell_at = |row: usize, col: i32| -> Option<(u16, u16)> {
-            let y =
-                i32::from(pane.y) + i32::try_from(row).ok()? - i32::try_from(self.scroll).ok()?;
-            let x = i32::from(pane.x) + i32::from(MARGIN) + col;
-            let inside = x >= i32::from(pane.x)
-                && x < i32::from(pane.x + pane.width)
-                && y >= i32::from(pane.y)
-                && y < i32::from(pane.y + pane.height);
-            if inside {
-                Some((u16::try_from(x).ok()?, u16::try_from(y).ok()?))
-            } else {
-                None
-            }
-        };
+        let cell_at = |row: usize, col: i32| self.cell_at(pane, row, col);
         match item {
             Focusable::Link { fragments, .. } => {
                 for f in fragments {

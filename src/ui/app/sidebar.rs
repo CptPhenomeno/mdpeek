@@ -136,6 +136,7 @@ impl App {
         self.rel_path = self.relative(path);
         self.scroll = 0;
         self.focus = None;
+        self.clear_search();
         self.fullscreen_request = None;
         self.relayout();
         self.request_pictures();

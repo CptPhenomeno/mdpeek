@@ -275,6 +275,14 @@ mod error_colour_tests {
     }
 
     #[test]
+    fn match_highlights_keep_a_contrast_of_at_least_4_5() {
+        for (fg, bg) in [(MATCH_FG, MATCH_BG), (CURRENT_MATCH_FG, CURRENT_MATCH_BG)] {
+            assert!(contrast(fg, bg) >= 4.5, "{}", contrast(fg, bg));
+        }
+        assert_ne!(MATCH_BG, CURRENT_MATCH_BG);
+    }
+
+    #[test]
     fn error_colour_is_clearly_red_and_readable_on_both_backgrounds() {
         let (r, g, b) = channels(ERROR);
         assert!(
