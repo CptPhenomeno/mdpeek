@@ -27,6 +27,7 @@ use crate::graphics::{
 };
 use crate::picture_cache::PictureCache;
 use crate::render_worker::RenderWorker;
+use crate::tree::Start;
 use crate::ui::opener::SystemOpener;
 
 /// Render worker threads.
@@ -41,6 +42,7 @@ const IDLE_POLL: Duration = Duration::from_secs(1);
 pub fn run(
     doc: Document,
     rel_path: String,
+    start: Start,
     protocol: ProtocolChoice,
     text_diagrams: bool,
 ) -> io::Result<()> {
@@ -51,6 +53,7 @@ pub fn run(
     let detector = StdioDetector::default();
     let selection = select(protocol, &detector);
     let mut app = App::new(doc, rel_path);
+    app.set_start(start);
     app.set_opener(Box::new(SystemOpener));
     app.set_text_mode(text_diagrams);
     app.set_cell(selection.cell);

@@ -144,6 +144,21 @@ impl Pictures {
         }
     }
 
+    /// Starts over for another document: every size, state and job is dropped,
+    /// the generation moves on (late results of the old document are ignored)
+    /// and the sink, clock and text mode carry over.
+    pub fn reset_for(&mut self, doc: &Document) {
+        let mut fresh = Self::new(doc);
+        std::mem::swap(&mut fresh.sink, &mut self.sink);
+        std::mem::swap(&mut fresh.clock, &mut self.clock);
+        fresh.text_mode = self.text_mode;
+        fresh.generation = self.generation + 1;
+        if let Some(sink) = &fresh.sink {
+            sink.set_generation(fresh.generation);
+        }
+        *self = fresh;
+    }
+
     /// Switches diagram text mode; diagram jobs of the other mode are forgotten
     /// so the new mode submits its own (cached pictures are not rendered again).
     pub fn set_text_mode(&mut self, on: bool) {
