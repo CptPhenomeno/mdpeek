@@ -15,9 +15,8 @@ use ratatui::{
     text::Line,
     widgets::{Block, Paragraph},
 };
-use unicode_width::UnicodeWidthStr;
 
-use super::{App, Areas, areas};
+use super::{App, Areas, areas, status};
 use crate::graphics::PictureRequest;
 use crate::layout::{DiagramState, DiagramStates, PictureKey, Slot};
 use crate::theme;
@@ -331,16 +330,18 @@ impl App {
     }
 
     fn view_status(&self, width: u16) -> Line<'static> {
-        let right = match self.view.as_ref() {
-            Some(v) if v.text => "Text diagram | Esc: back ".to_owned(),
-            Some(v) => format!(
-                "Zoom {}% | Esc: back ",
-                v.zoom.as_ref().map_or(100, ZoomState::percent)
-            ),
-            None => String::new(),
-        };
-        let left = format!(" {}", self.rel_path);
-        let pad = usize::from(width).saturating_sub(left.width() + right.width());
-        Line::styled(format!("{left}{}{right}", " ".repeat(pad)), theme::status())
+        // Drop ranks: the zoom stays, "Esc: back" goes first.
+        let mut right = Vec::new();
+        match self.view.as_ref() {
+            Some(v) if v.text => right.push(("Text diagram".to_owned(), 0)),
+            Some(v) => right.push((
+                format!("Zoom {}%", v.zoom.as_ref().map_or(100, ZoomState::percent)),
+                0,
+            )),
+            None => {}
+        }
+        right.push(("Esc: back".to_owned(), 1));
+        let left = status::Left::Text(self.rel_path.clone());
+        Line::styled(status::compose(&left, &right, width), theme::status())
     }
 }

@@ -209,3 +209,17 @@ fn snapshot_of_the_full_screen_view_with_the_placeholder_renderer() {
     }
     insta::assert_snapshot!(terminal.backend());
 }
+
+#[test]
+fn the_status_bar_of_the_view_keeps_the_zoom_whole_at_any_width() {
+    let (mut app, _) = open((1600, 1000));
+    for width in 1..=80u16 {
+        let mut terminal = Terminal::new(TestBackend::new(width, H)).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let row: String = (0..width).map(|x| buf[(x, H - 1)].symbol()).collect();
+        if width >= 11 {
+            assert!(row.contains("Zoom 100% "), "{width}: {row:?}");
+        }
+    }
+}
