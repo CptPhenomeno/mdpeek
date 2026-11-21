@@ -46,7 +46,7 @@ fn tokens(pieces: Vec<Piece>) -> Vec<Token> {
         // Runs of whitespace and of non-whitespace, sliced out of the text.
         let mut start = 0;
         let mut run_space = false;
-        let mut emit = |text: &str, space: bool, word: &mut Vec<RowSpan>, out: &mut Vec<Token>| {
+        let emit = |text: &str, space: bool, word: &mut Vec<RowSpan>, out: &mut Vec<Token>| {
             if text.is_empty() {
                 return;
             }

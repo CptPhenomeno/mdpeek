@@ -94,6 +94,9 @@ pub struct App {
     quit: bool,
     /// Frames drawn so far.
     frames: usize,
+    /// The layout predates the real size (or a setting changed before it was known):
+    /// the first resize lays the document out.
+    layout_stale: bool,
 }
 
 impl App {
@@ -132,8 +135,10 @@ impl App {
             search_input: false,
             quit: false,
             frames: 0,
+            layout_stale: false,
         };
-        app.relayout();
+        // Laid out at the first resize, once the real size is known.
+        app.layout_stale = true;
         app
     }
 
@@ -148,6 +153,9 @@ impl App {
         self.sized = true;
         if self.size == (width, height) {
             if first {
+                if self.layout_stale {
+                    self.relayout();
+                }
                 self.request_pictures();
             }
             return;
@@ -165,7 +173,10 @@ impl App {
         if width_changed {
             self.jobs.next_generation();
         }
-        if width_changed || (height_changed && self.layout.rows.iter().any(|r| r.slot.is_some())) {
+        if width_changed
+            || self.layout_stale
+            || (height_changed && self.layout.rows.iter().any(|r| r.slot.is_some()))
+        {
             let anchor = self.top_anchor();
             let before = self.slot_sizes();
             self.relayout();
@@ -321,6 +332,10 @@ impl App {
     }
 
     fn relayout_keeping_position(&mut self) {
+        if !self.sized {
+            self.layout_stale = true;
+            return;
+        }
         let anchor = self.top_anchor();
         self.relayout();
         self.scroll = anchor
@@ -504,6 +519,7 @@ impl App {
     }
 
     fn relayout(&mut self) {
+        self.layout_stale = false;
         self.layout = layout::layout_diagrams(
             &self.doc,
             self.pane_width_of(self.size.0),

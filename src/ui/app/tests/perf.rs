@@ -5,11 +5,9 @@ use std::sync::{Arc, Mutex};
 use ratatui::{Terminal, backend::TestBackend};
 
 use super::*;
-use crate::graphics::detect::Selection;
 use crate::layout::PictureKey;
 use crate::render_worker::{Job, Mode};
 use crate::ui::JobSink;
-use ratatui_image::picker::ProtocolType;
 
 const W: u16 = 80;
 const H: u16 = 10 + CHROME;
@@ -120,11 +118,6 @@ fn the_first_frame_is_drawn_before_protocol_detection_and_before_any_diagram_fin
         // Detection runs now: the frame must already be on screen, and no diagram done.
         let frames = app.frames_drawn();
         seen = Some((frames, terminal_text(app)));
-        Some(Selection {
-            protocol: ProtocolType::Halfblocks,
-            cell: (10, 20),
-            detected: true,
-        })
     })
     .unwrap();
     let (frames, text) = seen.expect("detection ran");
