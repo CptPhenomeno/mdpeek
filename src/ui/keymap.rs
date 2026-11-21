@@ -21,7 +21,8 @@ pub enum Action {
     Quit,
     // Sidebar (SPEC §3.2, §3.7).
     ToggleSidebar,
-    SwitchFocus,
+    FocusSidebar,
+    FocusDocument,
     /// A tree navigation key, while the sidebar has focus.
     Nav(NavKey),
     // Full-screen view (SPEC §3.6.3).
@@ -46,6 +47,17 @@ pub enum Context {
     Sidebar,
     /// Keys that work whichever pane has focus.
     Global,
+}
+
+impl Binding {
+    /// Whether the key types a character: such bindings must not fire while a
+    /// text input (the search input, KB-54) is open.
+    pub fn is_letter_key(&self) -> bool {
+        matches!(self.code, KeyCode::Char(_))
+            && !self
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+    }
 }
 
 /// One row of the key map.
@@ -216,26 +228,32 @@ pub const BINDINGS: &[Binding] = &[
         "Quit",
     ),
     global(
-        KeyCode::F(8),
+        KeyCode::Char('d'),
         NONE,
         Action::ToggleTextDiagrams,
-        "F8",
+        "d",
         "Toggle text diagrams",
     ),
-    global(KeyCode::F(10), NONE, Action::Quit, "F10", "Quit"),
     global(
-        KeyCode::F(2),
+        KeyCode::Char('s'),
         NONE,
         Action::ToggleSidebar,
-        "F2",
+        "s",
         "Show or hide the sidebar",
     ),
     global(
-        KeyCode::F(6),
-        NONE,
-        Action::SwitchFocus,
-        "F6",
-        "Switch focus between sidebar and document",
+        KeyCode::Left,
+        KeyModifiers::CONTROL,
+        Action::FocusSidebar,
+        "Ctrl+Left",
+        "Focus the sidebar (while it is visible)",
+    ),
+    global(
+        KeyCode::Right,
+        KeyModifiers::CONTROL,
+        Action::FocusDocument,
+        "Ctrl+Right",
+        "Focus the document",
     ),
     side(KeyCode::Up, NavKey::Up, "Up", "Select the previous entry"),
     side(KeyCode::Down, NavKey::Down, "Down", "Select the next entry"),
@@ -307,10 +325,30 @@ pub fn sidebar_action(key: KeyEvent) -> Option<Action> {
     action_in(Context::Sidebar, key).or_else(|| action_in(Context::Global, key))
 }
 
+/// Action bound to `key` while a text input is open: letter keys are skipped.
+pub fn input_action(key: KeyEvent, sidebar_focused: bool) -> Option<Action> {
+    let own = if sidebar_focused {
+        Context::Sidebar
+    } else {
+        Context::Document
+    };
+    action_in_input(own, key).or_else(|| action_in_input(Context::Global, key))
+}
+
 /// Action bound to `key` in exactly `context`, if any.
 pub fn action_in(context: Context, key: KeyEvent) -> Option<Action> {
+    find(context, key).map(|b| b.action)
+}
+
+/// Like [`action_in`], but a letter key is ignored: used while a text input is open.
+pub fn action_in_input(context: Context, key: KeyEvent) -> Option<Action> {
+    find(context, key)
+        .filter(|b| !b.is_letter_key())
+        .map(|b| b.action)
+}
+
+fn find(context: Context, key: KeyEvent) -> Option<&'static Binding> {
     BINDINGS
         .iter()
         .find(|b| b.context == context && b.code == key.code && b.modifiers == key.modifiers)
-        .map(|b| b.action)
 }
