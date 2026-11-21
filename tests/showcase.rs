@@ -302,6 +302,15 @@ fn names(nodes: &[Node], out: &mut Vec<String>) {
 }
 
 #[test]
+fn the_showcase_document_model_has_an_ordered_list_with_start_10() {
+    let doc = showcase();
+    let found = all_blocks(&doc)
+        .iter()
+        .any(|b| matches!(b, Block::List(l) if l.start == Some(10)));
+    assert!(found, "no ordered list starts at 10");
+}
+
+#[test]
 fn the_sidebar_tree_of_fixtures_hides_the_hidden_folder_and_the_gitignored_file() {
     assert!(
         fixtures().join("ignored.md").exists(),
