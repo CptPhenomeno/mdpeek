@@ -129,6 +129,8 @@ A `.mmd`/`.mermaid` file is a document made of a single diagram.
 
    Zooming re-rasterises from the SVG at the new scale (no pixel upscaling). The status bar shows the zoom percentage. In diagram text mode, the full-screen view shows the text output, scrollable with arrow keys.
 
+4. **Mouse** (user request, built last, after KB-67): a left click on a link focuses it and activates it at once, exactly like Enter (§3.6.2); a left click on a diagram focuses it; a double click on a diagram (two left clicks on the same diagram within 400 ms) opens the full-screen view. Clicks elsewhere in the document clear nothing. The terminal's own text selection stays available with Shift+drag (WezTerm bypasses mouse capture with Shift).
+
 ### 3.7 Sidebar
 
 1. Shows the root directory as a tree: directories and supported files only (`.md`, `.markdown`, `.mmd`, `.mermaid`, case-insensitive). Hidden entries (dot-prefixed) and paths ignored by `.gitignore` are skipped. Directories that contain no supported file at any depth are omitted.
@@ -145,6 +147,7 @@ A `.mmd`/`.mermaid` file is a document made of a single diagram.
 | PgUp / PgDn, Space | Scroll one page (minus one row) |
 | Home / End | Top / bottom of the document |
 | Mouse wheel | Scroll three rows |
+| Left click / double click | Activate a link, focus a diagram / open a diagram full screen (§3.6.4) |
 | Tab / Shift+Tab | Next / previous focusable (§3.6) |
 | Enter | Activate focused item |
 | Esc | Close overlay / clear search / clear focus, in that order |
