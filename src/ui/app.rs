@@ -16,6 +16,8 @@ use crate::layout::{self, Diagrams, Layout, MARGIN, PictureKey, State};
 use crate::theme;
 
 mod activate;
+mod areas;
+pub use areas::{Areas, areas};
 mod click;
 mod focus;
 mod fullscreen;
@@ -185,7 +187,7 @@ impl App {
 
     /// Rows the pane shows at once.
     pub fn viewport_height(&self) -> usize {
-        usize::from(self.size.1.saturating_sub(STATUS_ROWS + BORDER)).max(1)
+        usize::from(self.areas().document_inner.height).max(1)
     }
 
     /// (block, row offset inside the block) of the top visible row.
@@ -373,35 +375,21 @@ impl App {
             self.render_view(frame);
             return;
         }
-        let pane = Rect {
-            height: area.height.saturating_sub(STATUS_ROWS),
-            ..area
-        };
-        let status = Rect {
-            y: area.y + pane.height,
-            height: area.height - pane.height,
-            ..area
-        };
+        let Areas {
+            sidebar,
+            document,
+            document_inner: inner,
+            status,
+        } = areas(area, self.sidebar.visible);
         // Paint every cell first: later widgets only patch the foreground.
         frame.render_widget(Block::new().style(theme::page()), area);
-        let cols = self.sidebar_cols(area.width, self.sidebar.visible);
-        let side = Rect {
-            width: cols,
-            ..pane
-        };
-        let doc = Rect {
-            x: pane.x + cols,
-            width: pane.width - cols,
-            ..pane
-        };
-        if cols > 0 {
-            self.draw_sidebar(frame, side);
+        if sidebar.width > 0 {
+            self.draw_sidebar(frame, sidebar);
         }
         let block = Block::new()
             .borders(Borders::ALL)
             .border_style(theme::border(!self.sidebar.focused));
-        let inner = block.inner(doc);
-        frame.render_widget(block, doc);
+        frame.render_widget(block, document);
         frame.render_widget(Paragraph::new(self.pane_lines(inner.height)), inner);
         self.draw_pictures(inner, frame.buffer_mut());
         self.draw_focus(inner, frame.buffer_mut());
@@ -440,10 +428,23 @@ impl App {
         }
     }
 
+    /// The main view's areas for the current terminal size.
+    fn areas(&self) -> Areas {
+        areas(self.terminal_rect(), self.sidebar.visible)
+    }
+
+    fn terminal_rect(&self) -> Rect {
+        Rect::new(0, 0, self.size.0, self.size.1)
+    }
+
+    /// Columns the document gets inside its border on a terminal `terminal_width` wide.
     fn pane_width_of(&self, terminal_width: u16) -> u16 {
-        terminal_width
-            .saturating_sub(BORDER)
-            .saturating_sub(self.sidebar_cols(terminal_width, self.sidebar.visible))
+        areas(
+            Rect::new(0, 0, terminal_width, self.size.1),
+            self.sidebar.visible,
+        )
+        .document_inner
+        .width
     }
 
     fn relayout(&mut self) {

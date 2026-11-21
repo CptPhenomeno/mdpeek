@@ -11,16 +11,13 @@ use ratatui::{
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use super::{App, BORDER};
+use super::{App, BORDER, areas::SIDEBAR_COLS};
 use crate::doc::Document;
 use crate::theme;
 use crate::tree::{
     self, Start,
     nav::{NavKey, Outcome, Row, SidebarNav},
 };
-
-/// Width of the sidebar pane, border included (SPEC §3.2).
-const SIDEBAR_COLS: u16 = 30;
 
 /// State of the sidebar pane.
 #[derive(Debug, Default)]
@@ -65,15 +62,6 @@ impl App {
     /// Columns available to the document inside its border.
     pub fn document_width(&self) -> u16 {
         self.pane_width_of(self.size.0)
-    }
-
-    /// Columns the sidebar takes on a terminal `width` wide.
-    pub(super) fn sidebar_cols(&self, width: u16, visible: bool) -> u16 {
-        if visible {
-            SIDEBAR_COLS.min(width / 2)
-        } else {
-            0
-        }
     }
 
     pub(super) fn toggle_sidebar(&mut self) {

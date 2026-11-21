@@ -5,7 +5,7 @@ use std::time::Duration;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
-use super::{App, BORDER, STATUS_ROWS};
+use super::App;
 use crate::layout::{Focusable, Layout, MARGIN, PictureKey, State};
 
 /// Two clicks on the same diagram at most this far apart are a double click.
@@ -55,25 +55,6 @@ impl App {
         self.view.is_some() || self.text_input_open()
     }
 
-    /// The document pane inside its border, as `render` lays it out.
-    fn doc_inner(&self) -> Rect {
-        let (width, height) = self.size;
-        let cols = self.sidebar_cols(width, self.sidebar.visible);
-        let doc = Rect {
-            x: cols,
-            y: 0,
-            width: width - cols,
-            height: height.saturating_sub(STATUS_ROWS),
-        };
-        let b = BORDER / 2;
-        Rect {
-            x: doc.x + b,
-            y: doc.y + b,
-            width: doc.width.saturating_sub(BORDER),
-            height: doc.height.saturating_sub(BORDER),
-        }
-    }
-
     /// Left button pressed: act on the link or diagram under the cursor.
     /// Down (not Up) acts once per click: a drag ends with its own Up and
     /// must not trigger a second time.
@@ -83,7 +64,7 @@ impl App {
         }
         let hit = hit_test(
             &self.layout,
-            self.doc_inner(),
+            self.areas().document_inner,
             self.scroll,
             mouse.column,
             mouse.row,
