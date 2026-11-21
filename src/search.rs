@@ -53,19 +53,85 @@ impl Search {
     }
 
     /// New query: recompute the matches and select the first one.
-    pub fn set_query(&mut self, _layout: &Layout, query: &str) {
+    pub fn set_query(&mut self, layout: &Layout, query: &str) {
         self.query = query.to_string();
+        self.matches = find_matches(layout, query);
+        self.current = if self.matches.is_empty() {
+            None
+        } else {
+            Some(0)
+        };
     }
 
-    /// Same query on a new layout; keeps the current match by logical position.
-    pub fn relayout(&mut self, _layout: &Layout) {}
+    /// Same query on a new layout; keeps the current match by logical position
+    /// (the first match at or after it, else the last one).
+    pub fn relayout(&mut self, layout: &Layout) {
+        let pos = self.position();
+        self.matches = find_matches(layout, &self.query);
+        self.current = match pos {
+            _ if self.matches.is_empty() => None,
+            None => Some(0),
+            Some(pos) => Some(
+                self.matches
+                    .iter()
+                    .position(|m| (m.block, m.range.start) >= pos)
+                    .unwrap_or(self.matches.len() - 1),
+            ),
+        };
+    }
 
-    pub fn next(&mut self) {}
+    pub fn next(&mut self) {
+        let n = self.matches.len();
+        self.current = self.current.map(|i| (i + 1) % n.max(1));
+    }
 
-    pub fn prev(&mut self) {}
+    pub fn prev(&mut self) {
+        let n = self.matches.len();
+        self.current = self.current.map(|i| (i + n.max(1) - 1) % n.max(1));
+    }
+}
+
+/// Lowercase `text` char by char, so each lowered byte maps to the original
+/// char it came from (lowercasing can change byte lengths).
+/// Returns the lowered text and, per lowered byte, the original char's byte range.
+fn lower_with_map(text: &str) -> (String, Vec<(usize, usize)>) {
+    let mut lowered = String::with_capacity(text.len());
+    let mut map = Vec::with_capacity(text.len());
+    for (start, ch) in text.char_indices() {
+        let end = start + ch.len_utf8();
+        for lc in ch.to_lowercase() {
+            lowered.push(lc);
+            map.extend(std::iter::repeat_n((start, end), lc.len_utf8()));
+        }
+    }
+    (lowered, map)
 }
 
 /// All matches of `query` in document order.
-pub fn find_matches(_layout: &Layout, _query: &str) -> Vec<Match> {
-    Vec::new()
+pub fn find_matches(layout: &Layout, query: &str) -> Vec<Match> {
+    let needle: String = query.chars().flat_map(char::to_lowercase).collect();
+    if needle.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (block, text) in layout.index.texts.iter().enumerate() {
+        let (lowered, map) = lower_with_map(&text.text);
+        let mut from = 0;
+        while let Some(found) = lowered[from..].find(&needle) {
+            let lo = from + found;
+            let hi = lo + needle.len();
+            // Whole original chars: start of the first, end of the last.
+            let range = map[lo].0..map[hi - 1].1;
+            let fragments = text.fragments(range.clone());
+            if !fragments.is_empty() {
+                out.push(Match {
+                    block,
+                    range,
+                    fragments,
+                });
+            }
+            from = hi;
+        }
+    }
+    out
 }

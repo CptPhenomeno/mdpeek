@@ -85,7 +85,7 @@ fn matches_inside_code_blocks_and_table_cells_are_found() {
 
 #[test]
 fn a_phrase_split_across_two_wrapped_rows_is_found_and_returned_as_two_fragments() {
-    let l = lay("aaaa bbbb cccc dddd eeee ffff", 14);
+    let l = lay("aaaa bbbb cccc dddd eeee ffff", 20);
     assert_eq!(l.rows[0].text(), "aaaa bbbb cccc");
     let m = find_matches(&l, "CCCC dddd");
     assert_eq!(m.len(), 1);
@@ -114,7 +114,7 @@ fn relayout_keeps_the_current_match_by_logical_position() {
     s.next();
     assert_eq!(s.current_index(), Some(1));
     let pos = s.position();
-    s.relayout(&lay(md, 12));
+    s.relayout(&lay(md, 20));
     assert_eq!(s.position(), pos);
     assert_eq!(s.matches().len(), 2);
 }
