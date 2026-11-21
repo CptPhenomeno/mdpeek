@@ -19,6 +19,10 @@ pub enum Action {
     ClearFocus,
     Activate,
     Quit,
+    // Search (SPEC §3.9).
+    SearchOpen,
+    SearchNext,
+    SearchPrev,
     // Sidebar (SPEC §3.2, §3.7).
     ToggleSidebar,
     FocusSidebar,
@@ -221,6 +225,27 @@ pub const BINDINGS: &[Binding] = &[
         "Open the focused link or diagram",
     ),
     global(KeyCode::Char('q'), NONE, Action::Quit, "q", "Quit"),
+    global(
+        KeyCode::Char('f'),
+        KeyModifiers::CONTROL,
+        Action::SearchOpen,
+        "Ctrl+F",
+        "Open the search input",
+    ),
+    global(
+        KeyCode::Char('n'),
+        NONE,
+        Action::SearchNext,
+        "n",
+        "Next search match",
+    ),
+    global(
+        KeyCode::Char('N'),
+        KeyModifiers::SHIFT,
+        Action::SearchPrev,
+        "N",
+        "Previous search match",
+    ),
     global(
         KeyCode::Char('d'),
         NONE,

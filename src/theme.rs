@@ -35,6 +35,12 @@ pub const STRONG: Color = Color::Rgb(255, 255, 255);
 pub const EMPHASIS: Color = Color::Rgb(249, 226, 175);
 /// Background of inline code.
 pub const CODE_BG: Color = Color::Rgb(49, 50, 68);
+/// Background of a search match, with `MATCH_FG` text (contrast >= 4.5:1).
+pub const MATCH_BG: Color = Color::Rgb(137, 180, 250);
+pub const MATCH_FG: Color = BG;
+/// Background of the current search match: warmer and bolder than the others.
+pub const CURRENT_MATCH_BG: Color = Color::Rgb(250, 179, 135);
+pub const CURRENT_MATCH_FG: Color = BG;
 
 /// `#rrggbb` form of an RGB colour, for Mermaid theme variables.
 pub fn hex(c: Color) -> String {
