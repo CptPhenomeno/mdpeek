@@ -1,0 +1,31 @@
+name: Setup and run check on readmd
+runs:
+  using: composite
+  steps:
+    # Read the toolchain version from Cargo.toml (rust-version)
+    - name: Read rust-version
+      id: msrv
+      run: echo "version=$(sed -n 's/^rust-version *= *"\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      shell: sh
+
+    # Setup Rust
+    - name: Setup Rust
+      run: rustup toolchain install "${{ steps.msrv.outputs.version }}" --profile minimal --component rustfmt --component clippy --no-self-update && rustup default "${{ steps.msrv.outputs.version }}"
+      shell: sh
+
+    # Cache cargo registry and build output
+    - name: Cache cargo
+      uses: actions/cache@v4.2.0
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ steps.msrv.outputs.version }}-${{ hashFiles('Cargo.lock') }}
+        restore-keys: |
+          cargo-${{ runner.os }}-${{ runner.arch }}-${{ steps.msrv.outputs.version }}-
+
+    # Run 'make check'
+    - name: Run 'make check'
+      run: make check
+      shell: sh
