@@ -92,6 +92,8 @@ pub struct App {
     /// The search input is open and owns the keyboard.
     search_input: bool,
     quit: bool,
+    /// Frames drawn so far.
+    frames: usize,
 }
 
 impl App {
@@ -129,6 +131,7 @@ impl App {
             search: crate::search::Search::new(),
             search_input: false,
             quit: false,
+            frames: 0,
         };
         app.relayout();
         app
@@ -193,6 +196,21 @@ impl App {
             .filter(|s| s.known)
             .map(|s| (s.key.clone(), s.px))
             .collect()
+    }
+
+    /// Frames drawn so far.
+    pub fn frames_drawn(&self) -> usize {
+        self.frames
+    }
+
+    /// Code blocks in the document.
+    pub fn code_blocks_in_document(&self) -> usize {
+        self.layout.code_blocks()
+    }
+
+    /// Code blocks highlighted so far.
+    pub fn highlighted_code_blocks(&self) -> usize {
+        self.layout.highlighted_blocks()
     }
 
     /// Index of the first visible row.
@@ -403,6 +421,7 @@ impl App {
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
+        self.frames += 1;
         let area = frame.area();
         self.resize(area.width, area.height);
         if self.view.is_some() {

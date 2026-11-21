@@ -37,6 +37,23 @@ const RESULT_POLL: Duration = Duration::from_millis(50);
 /// Poll interval when nothing is outstanding (only to notice a quit).
 const IDLE_POLL: Duration = Duration::from_secs(1);
 
+/// Draws the first frame, then runs `detect` and applies what it found.
+/// (Stub: detection still comes first.)
+pub fn first_frame_then_detect<B: ratatui::backend::Backend>(
+    terminal: &mut Terminal<B>,
+    app: &mut App,
+    detect: impl FnOnce(&mut App) -> Option<crate::graphics::detect::Selection>,
+) -> io::Result<()> {
+    let found = detect(app);
+    terminal
+        .draw(|f| app.render(f))
+        .map_err(|e| io::Error::other(e.to_string()))?;
+    if let Some(selection) = found {
+        app.set_cell(selection.cell);
+    }
+    Ok(())
+}
+
 /// Run the viewer on `doc` until the user quits; `rel_path` is shown in the status bar.
 /// `text_diagrams` is `--text-diagrams`. `protocol` is the `--protocol` choice; the detected one is announced in the status bar.
 pub fn run(

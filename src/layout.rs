@@ -156,6 +156,23 @@ pub struct Layout {
     pub index: Index,
 }
 
+impl Layout {
+    /// Code blocks in the layout.
+    pub fn code_blocks(&self) -> usize {
+        self.rows
+            .iter()
+            .filter(|r| {
+                r.kind == RowKind::Code && r.spans.first().is_some_and(|s| s.text.starts_with('┌'))
+            })
+            .count()
+    }
+
+    /// Code blocks highlighted so far (all of them: highlighting is eager for now).
+    pub fn highlighted_blocks(&self) -> usize {
+        self.code_blocks()
+    }
+}
+
 /// Lay `doc` out for a pane `width` columns wide; `cell` is the cell size in pixels.
 /// Pictures have no known size here, so images are missing and diagrams are placeholders.
 pub fn layout(doc: &Document, width: u16, cell: (u16, u16)) -> Layout {
