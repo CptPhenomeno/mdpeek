@@ -86,9 +86,12 @@ expression: "render(&layout, 120)"
 |  1. Two point one                                                                                                    |
 |  2. Two point two                                                                                                    |
 |3. Three with a long text that wraps onto the next row and must hang under the text, not under the number             |
-|4. Starts at ten                                                                                                      |
-|5. Eleven                                                                                                             |
-|6. Twelve                                                                                                             |
+|                                                                                                                      |
+|A list that starts at ten:                                                                                            |
+|                                                                                                                      |
+|10. Starts at ten                                                                                                     |
+|11. Eleven                                                                                                            |
+|12. Twelve                                                                                                            |
 |                                                                                                                      |
 |Mixed                                                                                                                 |
 |                                                                                                                      |
