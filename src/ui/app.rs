@@ -21,6 +21,7 @@ pub use areas::{Areas, areas};
 mod click;
 mod focus;
 mod fullscreen;
+mod help;
 mod search;
 mod sidebar;
 #[cfg(test)]
@@ -40,10 +41,11 @@ const STATUS_ROWS: u16 = 1;
 const BORDER: u16 = 2;
 
 /// An open overlay (popup) over the document pane: it owns the keyboard and
-/// blocks clicks. The help overlay (KB-57) adds its variant here.
+/// blocks clicks.
 #[derive(Debug)]
 enum Overlay {
     Toc(toc::Toc),
+    Help(help::Help),
 }
 
 /// State of the viewer: document, layout and scroll.
@@ -370,6 +372,7 @@ impl App {
             Action::FocusPrev => self.focus_step(false),
             Action::Escape => self.escape(),
             Action::OpenToc => self.open_toc(),
+            Action::OpenHelp => self.open_help(),
             Action::SearchOpen => self.open_search(),
             Action::SearchNext => self.search_step(true),
             Action::SearchPrev => self.search_step(false),
@@ -385,7 +388,7 @@ impl App {
     }
 
     pub fn handle_mouse(&mut self, mouse: MouseEvent) {
-        if self.view.is_some() {
+        if self.view.is_some() || self.overlay_open() {
             return;
         }
         let rows = WHEEL_ROWS as isize;

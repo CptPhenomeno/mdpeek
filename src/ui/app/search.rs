@@ -65,7 +65,7 @@ impl App {
     }
 
     /// Highlights are showing: a query is set, even one without matches.
-    fn search_active(&self) -> bool {
+    pub(super) fn search_active(&self) -> bool {
         !self.search.query().is_empty()
     }
 

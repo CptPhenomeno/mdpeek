@@ -35,6 +35,10 @@ impl App {
 
     /// Keys while an overlay is open: only its own bindings apply.
     pub(super) fn handle_overlay_key(&mut self, key: KeyEvent) {
+        if matches!(self.overlay, Some(Overlay::Help(_))) {
+            self.handle_help_key(key);
+            return;
+        }
         match toc_action(key) {
             Some(Action::TocUp) => self.move_toc(-1),
             Some(Action::TocDown) => self.move_toc(1),
@@ -90,7 +94,10 @@ impl App {
     /// Selected entry of the open TOC.
     #[cfg(test)]
     pub(super) fn toc_selected(&self) -> Option<usize> {
-        self.overlay.as_ref().map(|Overlay::Toc(toc)| toc.selected)
+        self.overlay.as_ref().and_then(|o| match o {
+            Overlay::Toc(toc) => Some(toc.selected),
+            _ => None,
+        })
     }
 
     /// Whether an overlay owns the keyboard.
@@ -125,12 +132,18 @@ impl App {
     /// Rectangles of the overlays on screen.
     pub(super) fn overlay_rects(&self) -> Vec<Rect> {
         match self.overlay {
-            Some(Overlay::Toc(_)) if self.view.is_none() => vec![self.toc_rect()],
-            _ => Vec::new(),
+            _ if self.view.is_some() => Vec::new(),
+            Some(Overlay::Toc(_)) => vec![self.toc_rect()],
+            Some(Overlay::Help(_)) => vec![self.help_rect()],
+            None => Vec::new(),
         }
     }
 
     pub(super) fn draw_overlay(&mut self, frame: &mut Frame) {
+        if matches!(self.overlay, Some(Overlay::Help(_))) {
+            self.draw_help(frame);
+            return;
+        }
         let Some(Overlay::Toc(toc)) = &self.overlay else {
             return;
         };
