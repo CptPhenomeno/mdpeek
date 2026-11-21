@@ -223,3 +223,58 @@ fn d_toggles_text_mode_from_sidebar_focus_too() {
     press(&mut app, KeyCode::F(8));
     assert!(app.text_mode);
 }
+
+const WARNING: &str = "File is not valid UTF-8";
+
+fn status(app: &mut App) -> String {
+    let terminal = draw(app);
+    let buffer = terminal.backend().buffer();
+    (0..W).map(|x| buffer[(x, H - 1)].symbol()).collect()
+}
+
+/// root: bad.md (not UTF-8), a.md, z.md.
+fn project_with_latin1() -> TempDir {
+    let dir = project();
+    fs::write(dir.path().join("bad.md"), b"# Caf\xe9\n\ncr\xe8me").unwrap();
+    dir
+}
+
+fn start_on(dir: &TempDir, name: &str) -> App {
+    let mut start = file_start(dir.path());
+    start.initial_file = Some(dir.path().join(name));
+    app_with(start)
+}
+
+#[test]
+fn starting_on_a_non_utf8_file_keeps_the_warning_after_the_graphics_message() {
+    let dir = project_with_latin1();
+    let mut app = start_on(&dir, "bad.md");
+    app.set_message("Graphics: halfblocks");
+    let line = status(&mut app);
+    assert!(line.contains(WARNING), "{line}");
+    assert!(line.contains("Graphics: halfblocks"), "{line}");
+    // A status indicator, not a transient message: a key press keeps it.
+    press(&mut app, KeyCode::Down);
+    assert!(status(&mut app).contains(WARNING));
+}
+
+#[test]
+fn opening_a_non_utf8_file_from_the_sidebar_shows_the_warning() {
+    let dir = project_with_latin1();
+    let mut app = app_with(dir_start(dir.path()));
+    assert!(!status(&mut app).contains(WARNING));
+    app.open_file(&dir.path().join("bad.md"));
+    assert!(status(&mut app).contains(WARNING));
+    app.open_file(&dir.path().join("z.md"));
+    assert!(!status(&mut app).contains(WARNING));
+}
+
+#[test]
+fn the_graphics_message_does_not_hide_the_warning_after_a_reload() {
+    let dir = project_with_latin1();
+    let mut app = start_on(&dir, "bad.md");
+    press(&mut app, KeyCode::Char('r'));
+    app.set_message("Graphics: halfblocks");
+    let line = status(&mut app);
+    assert!(line.contains(WARNING), "{line}");
+}

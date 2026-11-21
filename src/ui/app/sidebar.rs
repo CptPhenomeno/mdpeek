@@ -156,9 +156,7 @@ impl App {
                 return;
             }
         };
-        self.message = doc
-            .invalid_utf8
-            .then(|| "File is not valid UTF-8".to_owned());
+        self.message = None;
         // Pictures of the old document must not show: a new generation drops
         // late results, and the picture set starts empty.
         self.jobs.reset_for(&doc);
@@ -196,11 +194,7 @@ impl App {
                 return;
             }
         };
-        self.message = Some(if doc.invalid_utf8 {
-            "Reloaded | File is not valid UTF-8".to_owned()
-        } else {
-            "Reloaded".to_owned()
-        });
+        self.message = Some("Reloaded".to_owned());
         for key in self.jobs.reload_for(&doc) {
             self.pictures.remove(&key);
         }

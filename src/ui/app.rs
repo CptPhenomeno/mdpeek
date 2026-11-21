@@ -99,11 +99,11 @@ pub struct App {
     layout_stale: bool,
 }
 
+/// Status-bar warning for a document that was decoded lossily.
+const NOT_UTF8: &str = "File is not valid UTF-8";
+
 impl App {
     pub fn new(doc: Document, rel_path: String) -> Self {
-        let message = doc
-            .invalid_utf8
-            .then(|| "File is not valid UTF-8".to_owned());
         let jobs = Pictures::new(&doc);
         let mut app = Self {
             doc,
@@ -116,7 +116,7 @@ impl App {
             size: (80, 24),
             sized: false,
             scroll: 0,
-            message,
+            message: None,
             sidebar: sidebar::Sidebar::default(),
             pictures: PictureSet::placeholder('#'),
             jobs,
@@ -601,10 +601,21 @@ impl App {
     }
 
     fn status_line(&self, width: u16) -> Line<'static> {
-        let left = match &self.message {
-            _ if self.search_input => format!(" Search: {}_", self.search.query()),
-            Some(message) => format!(" {} | {message}", self.rel_path),
-            None => format!(" {}", self.rel_path),
+        // The warning is a status indicator of the open document (SPEC §4.3):
+        // it stays while the document is open, whatever message comes and goes.
+        let warning = self.doc.invalid_utf8.then_some(NOT_UTF8);
+        let left = if self.search_input {
+            format!(" Search: {}_", self.search.query())
+        } else {
+            let parts = [
+                Some(self.rel_path.as_str()),
+                warning,
+                self.message.as_deref(),
+            ];
+            format!(
+                " {}",
+                parts.into_iter().flatten().collect::<Vec<_>>().join(" | ")
+            )
         };
         let mode = if self.text_mode {
             "Text diagrams | "
