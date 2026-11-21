@@ -9,7 +9,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use super::keymap::{Action, action_for};
+use super::keymap::{Action, action_for, sidebar_action};
 use crate::doc::Document;
 use crate::graphics::{PictureRequest, PictureSet};
 use crate::layout::{self, Diagrams, Layout, MARGIN, PictureKey, State};
@@ -47,8 +47,7 @@ pub struct App {
     sized: bool,
     scroll: usize,
     message: Option<String>,
-    /// Whether the document pane has the focus (the sidebar arrives later).
-    focused: bool,
+    sidebar: sidebar::Sidebar,
     pictures: PictureSet,
     /// Render jobs, natural sizes and diagram states.
     jobs: Pictures,
@@ -91,7 +90,7 @@ impl App {
             sized: false,
             scroll: 0,
             message,
-            focused: true,
+            sidebar: sidebar::Sidebar::default(),
             pictures: PictureSet::placeholder('#'),
             jobs,
             cell: CELL,
@@ -128,6 +127,12 @@ impl App {
         // Picture slots are fitted to the pane height.
         let height_changed = self.size.1 != height;
         self.size = (width, height);
+        self.reflow(width_changed, height_changed);
+    }
+
+    /// Lays the document out again after the pane changed size, keeping the
+    /// top row, and refreshes the pictures whose slots changed.
+    fn reflow(&mut self, width_changed: bool, height_changed: bool) {
         if width_changed {
             self.jobs.next_generation();
         }
@@ -303,7 +308,12 @@ impl App {
             self.handle_view_key(key);
             return;
         }
-        let Some(action) = action_for(key) else {
+        let action = if self.sidebar.focused {
+            sidebar_action(key)
+        } else {
+            action_for(key)
+        };
+        let Some(action) = action else {
             return;
         };
         match action {
@@ -322,6 +332,9 @@ impl App {
             Action::ClearFocus => self.clear_focus(),
             Action::Activate => self.activate(),
             Action::Quit => self.quit = true,
+            Action::ToggleSidebar => self.toggle_sidebar(),
+            Action::SwitchFocus => self.switch_focus(),
+            Action::Nav(key) => self.sidebar_key(key),
             _ => {}
         }
         self.request_pictures();
@@ -358,11 +371,24 @@ impl App {
         };
         // Paint every cell first: later widgets only patch the foreground.
         frame.render_widget(Block::new().style(theme::page()), area);
+        let cols = self.sidebar_cols(area.width, self.sidebar.visible);
+        let side = Rect {
+            width: cols,
+            ..pane
+        };
+        let doc = Rect {
+            x: pane.x + cols,
+            width: pane.width - cols,
+            ..pane
+        };
+        if cols > 0 {
+            self.draw_sidebar(frame, side);
+        }
         let block = Block::new()
             .borders(Borders::ALL)
-            .border_style(theme::border(self.focused));
-        let inner = block.inner(pane);
-        frame.render_widget(block, pane);
+            .border_style(theme::border(!self.sidebar.focused));
+        let inner = block.inner(doc);
+        frame.render_widget(block, doc);
         frame.render_widget(Paragraph::new(self.pane_lines(inner.height)), inner);
         self.draw_pictures(inner, frame.buffer_mut());
         self.draw_focus(inner, frame.buffer_mut());
@@ -402,7 +428,9 @@ impl App {
     }
 
     fn pane_width_of(&self, terminal_width: u16) -> u16 {
-        terminal_width.saturating_sub(BORDER)
+        terminal_width
+            .saturating_sub(BORDER)
+            .saturating_sub(self.sidebar_cols(terminal_width, self.sidebar.visible))
     }
 
     fn relayout(&mut self) {
@@ -459,6 +487,7 @@ impl App {
         let notice = |text: &'static str| vec![Line::styled(text, theme::dim())];
         match self.layout.state {
             State::TooNarrow => notice("Window too narrow"),
+            State::Empty if self.rel_path.is_empty() => notice("No supported files in this folder"),
             State::Empty => notice("Empty document"),
             State::Ready => self
                 .layout

@@ -327,6 +327,11 @@ impl PictureSet {
         self.items.insert(key, Entry { img, encoded: None });
     }
 
+    /// Forgets every picture (a new document starts).
+    pub fn clear(&mut self) {
+        self.items.clear();
+    }
+
     /// Forgets the picture of `key`.
     pub fn remove(&mut self, key: &PictureKey) {
         self.items.remove(key);

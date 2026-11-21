@@ -2,6 +2,8 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::tree::nav::NavKey;
+
 /// Everything a key can ask the app to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -17,6 +19,11 @@ pub enum Action {
     ClearFocus,
     Activate,
     Quit,
+    // Sidebar (SPEC §3.2, §3.7).
+    ToggleSidebar,
+    SwitchFocus,
+    /// A tree navigation key, while the sidebar has focus.
+    Nav(NavKey),
     // Full-screen view (SPEC §3.6.3).
     ZoomIn,
     ZoomOut,
@@ -35,6 +42,10 @@ pub enum Context {
     Document,
     /// The full-screen diagram view.
     Fullscreen,
+    /// The sidebar pane, while it has focus.
+    Sidebar,
+    /// Keys that work whichever pane has focus.
+    Global,
 }
 
 /// One row of the key map.
@@ -64,6 +75,39 @@ const fn bind(
         code,
         modifiers,
         action,
+        label,
+        description,
+    }
+}
+
+const fn global(
+    code: KeyCode,
+    modifiers: KeyModifiers,
+    action: Action,
+    label: &'static str,
+    description: &'static str,
+) -> Binding {
+    Binding {
+        context: Context::Global,
+        code,
+        modifiers,
+        action,
+        label,
+        description,
+    }
+}
+
+const fn side(
+    code: KeyCode,
+    key: NavKey,
+    label: &'static str,
+    description: &'static str,
+) -> Binding {
+    Binding {
+        context: Context::Sidebar,
+        code,
+        modifiers: NONE,
+        action: Action::Nav(key),
         label,
         description,
     }
@@ -164,21 +208,62 @@ pub const BINDINGS: &[Binding] = &[
         "Enter",
         "Open the focused link or diagram",
     ),
-    bind(
+    global(
         KeyCode::Char('q'),
         KeyModifiers::CONTROL,
         Action::Quit,
         "Ctrl+Q",
         "Quit",
     ),
-    bind(
+    global(
         KeyCode::F(8),
         NONE,
         Action::ToggleTextDiagrams,
         "F8",
         "Toggle text diagrams",
     ),
-    bind(KeyCode::F(10), NONE, Action::Quit, "F10", "Quit"),
+    global(KeyCode::F(10), NONE, Action::Quit, "F10", "Quit"),
+    global(
+        KeyCode::F(2),
+        NONE,
+        Action::ToggleSidebar,
+        "F2",
+        "Show or hide the sidebar",
+    ),
+    global(
+        KeyCode::F(6),
+        NONE,
+        Action::SwitchFocus,
+        "F6",
+        "Switch focus between sidebar and document",
+    ),
+    side(KeyCode::Up, NavKey::Up, "Up", "Select the previous entry"),
+    side(KeyCode::Down, NavKey::Down, "Down", "Select the next entry"),
+    side(
+        KeyCode::Left,
+        NavKey::Left,
+        "Left",
+        "Collapse the directory, or select its parent",
+    ),
+    side(
+        KeyCode::Right,
+        NavKey::Right,
+        "Right",
+        "Expand the directory",
+    ),
+    side(
+        KeyCode::Enter,
+        NavKey::Enter,
+        "Enter",
+        "Open the file, or expand the directory",
+    ),
+    side(
+        KeyCode::Home,
+        NavKey::Home,
+        "Home",
+        "Select the first entry",
+    ),
+    side(KeyCode::End, NavKey::End, "End", "Select the last entry"),
     view(KeyCode::Char('+'), Action::ZoomIn, "+", "Zoom in"),
     view(KeyCode::Char('='), Action::ZoomIn, "=", "Zoom in"),
     view(KeyCode::Char('-'), Action::ZoomOut, "-", "Zoom out"),
@@ -212,12 +297,17 @@ pub const BINDINGS: &[Binding] = &[
     ),
 ];
 
-/// Action bound to `key` in the document, if any.
+/// Action bound to `key` in the document (or globally), if any.
 pub fn action_for(key: KeyEvent) -> Option<Action> {
-    action_in(Context::Document, key)
+    action_in(Context::Document, key).or_else(|| action_in(Context::Global, key))
 }
 
-/// Action bound to `key` in `context`, if any.
+/// Action bound to `key` while the sidebar has focus (or globally), if any.
+pub fn sidebar_action(key: KeyEvent) -> Option<Action> {
+    action_in(Context::Sidebar, key).or_else(|| action_in(Context::Global, key))
+}
+
+/// Action bound to `key` in exactly `context`, if any.
 pub fn action_in(context: Context, key: KeyEvent) -> Option<Action> {
     BINDINGS
         .iter()

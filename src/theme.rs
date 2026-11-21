@@ -150,6 +150,15 @@ pub fn focus_frame() -> Style {
     Style::new().fg(ACCENT).bg(BG)
 }
 
+/// Selected sidebar row: inverted when the sidebar has focus, a quiet band otherwise.
+pub fn selected(focused: bool) -> Style {
+    if focused {
+        Style::new().fg(BG).bg(ACCENT)
+    } else {
+        Style::new().fg(FG).bg(CODE_BG)
+    }
+}
+
 pub fn status() -> Style {
     Style::new().fg(ACCENT)
 }
