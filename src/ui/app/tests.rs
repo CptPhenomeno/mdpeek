@@ -898,6 +898,60 @@ mod pictures {
         terminal.draw(|f| app.render(f)).unwrap();
         insta::assert_snapshot!(terminal.backend());
     }
+
+    // ---- search stays stable while diagrams finish (KB-87) ----
+
+    const SEARCH_DOC: &str = "alpha diagram\n\n```mermaid\ngraph TD\n A-->B\n```\n\n```mermaid\nbroken diagram\n```\n\nbeta diagram\n\ngamma diagram\n";
+
+    fn finish_diagrams(app: &mut App, jobs: &Jobs) {
+        deliver_picture(app, jobs, PictureKey::Diagram(0), NATURAL);
+        let job = last_job(jobs, &PictureKey::Diagram(1), Mode::Render);
+        app.on_result(result_of(
+            &job,
+            Outcome::Error("Diagram parse error on line 1".into()),
+        ));
+    }
+
+    fn search_status_text(app: &App) -> String {
+        app.search_status().unwrap_or_default()
+    }
+
+    fn current_text(app: &App) -> String {
+        let m = app.search.current().expect("a current match");
+        app.layout.index.texts[m.block].text.clone()
+    }
+
+    fn start_search() -> (App, Jobs) {
+        let (mut app, jobs) = pic_doc_app(SEARCH_DOC, 50, 20 + CHROME);
+        app.handle_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
+        for c in "diagram".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        press(&mut app, KeyCode::Enter);
+        (app, jobs)
+    }
+
+    #[test]
+    fn the_current_match_stays_the_same_match_when_a_diagram_result_relayouts_the_document() {
+        let (mut app, jobs) = start_search();
+        assert_eq!(search_status_text(&app), "match 1/3");
+        press(&mut app, KeyCode::Char('n'));
+        press(&mut app, KeyCode::Char('n'));
+        assert_eq!(current_text(&app), "gamma diagram");
+        finish_diagrams(&mut app, &jobs);
+        assert_eq!(search_status_text(&app), "match 3/3");
+        assert_eq!(current_text(&app), "gamma diagram");
+    }
+
+    #[test]
+    fn n_from_the_first_match_wraps_to_the_last_match_after_diagrams_finish_rendering() {
+        let (mut app, jobs) = start_search();
+        finish_diagrams(&mut app, &jobs);
+        assert_eq!(search_status_text(&app), "match 1/3");
+        app.handle_key(KeyEvent::new(KeyCode::Char('N'), KeyModifiers::SHIFT));
+        assert_eq!(search_status_text(&app), "match 3/3");
+        assert_eq!(current_text(&app), "gamma diagram");
+    }
 }
 
 mod activate;

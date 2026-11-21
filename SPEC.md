@@ -164,7 +164,7 @@ A `.mmd`/`.mermaid` file is a document made of a single diagram.
 ### 3.9 Search
 
 1. Ctrl+F opens a one-line input in the status bar. Search is incremental (updates while typing) and case-insensitive.
-2. Matches are searched in the logical text of each block (a whole paragraph, list item, heading, quote line, table cell or code line), not row by row, so a phrase split by word wrapping is still found; the match is then mapped back to the screen rows it spans, possibly as several fragments. Pictures are excluded. All matches are highlighted; the current match has a distinct colour and is scrolled into view.
+2. Matches are searched in the logical text of each block (a whole paragraph, list item, heading, quote line, table cell or code line), not row by row, so a phrase split by word wrapping is still found; the match is then mapped back to the screen rows it spans, possibly as several fragments. Pictures are excluded, and so is every text a diagram block shows (the error message, the source in its red frame and the text-mode output), so the matches do not change when a diagram finishes rendering (KB-87). All matches are highlighted; the current match has a distinct colour and is scrolled into view.
 3. Enter closes the input keeping the highlights; `n` / `N` move to the next / previous match, wrapping around; the status bar shows `match i/n` or "No matches".
 4. Esc closes the input and clears highlights.
 
