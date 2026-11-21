@@ -186,13 +186,13 @@ fn resize_recomputes_the_layout_and_keeps_the_same_document_position_at_the_top(
 }
 
 #[test]
-fn f10_and_ctrl_q_quit() {
+fn ctrl_q_quits_and_f10_does_not() {
     let mut app = app_from("hi", 40, 10);
     assert!(!app.should_quit());
     press(&mut app, KeyCode::Char('q'));
     assert!(!app.should_quit());
     press(&mut app, KeyCode::F(10));
-    assert!(app.should_quit());
+    assert!(!app.should_quit());
     let mut app = app_from("hi", 40, 10);
     app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
     assert!(app.should_quit());
@@ -805,7 +805,7 @@ mod pictures {
     const FLOW: &str = "```mermaid\ngraph TD\n A-->B\n```\n";
 
     #[test]
-    fn f8_toggles_diagram_text_mode_and_recomputes_the_layout() {
+    fn d_toggles_diagram_text_mode_and_recomputes_the_layout() {
         let md = format!("{FLOW}\n{}", many(30));
         let (mut app, jobs) = pic_doc_app(&md, 40, 12 + CHROME);
         deliver_picture(&mut app, &jobs, PictureKey::Diagram(0), (100, 40));
@@ -814,7 +814,7 @@ mod pictures {
         let anchor = app.top_anchor();
         let renders_before = jobs_of(&jobs, Mode::Render);
 
-        press(&mut app, KeyCode::F(8));
+        press(&mut app, KeyCode::Char('d'));
         assert_eq!(jobs_of(&jobs, Mode::Text), 1);
         assert_ne!(app.row_count(), picture_rows, "placeholder is taller");
         deliver_text(
@@ -824,7 +824,7 @@ mod pictures {
             Outcome::Text("┌───┐\n│ A │\n└───┘".into()),
         );
 
-        press(&mut app, KeyCode::F(8));
+        press(&mut app, KeyCode::Char('d'));
         assert_eq!(app.row_count(), picture_rows);
         assert_eq!(app.top_anchor(), anchor);
         assert_eq!(
@@ -838,7 +838,7 @@ mod pictures {
     fn text_drawings_and_the_unavailable_note_replace_the_picture_in_text_mode() {
         let md = format!("{FLOW}\n```mermaid\npie\n \"a\": 1\n```\n");
         let (mut app, jobs) = pic_doc_app(&md, 70, 30 + CHROME);
-        press(&mut app, KeyCode::F(8));
+        press(&mut app, KeyCode::Char('d'));
         deliver_text(
             &mut app,
             &jobs,
@@ -871,10 +871,10 @@ mod pictures {
         let (mut app, _jobs) = pic_doc_app(FLOW, 60, 12 + CHROME);
         let off = screen(&mut app, 60, 12 + CHROME);
         assert!(!off.last().unwrap().contains("Text diagrams"));
-        press(&mut app, KeyCode::F(8));
+        press(&mut app, KeyCode::Char('d'));
         let on = screen(&mut app, 60, 12 + CHROME);
         assert!(on.last().unwrap().contains("Text diagrams"), "{on:?}");
-        press(&mut app, KeyCode::F(8));
+        press(&mut app, KeyCode::Char('d'));
         let off = screen(&mut app, 60, 12 + CHROME);
         assert!(!off.last().unwrap().contains("Text diagrams"));
     }
@@ -883,7 +883,7 @@ mod pictures {
     fn snapshot_of_a_document_with_a_diagram_in_text_mode() {
         let md = format!("before\n\n{FLOW}\nafter\n");
         let (mut app, jobs) = pic_doc_app(&md, 40, 14 + CHROME);
-        press(&mut app, KeyCode::F(8));
+        press(&mut app, KeyCode::Char('d'));
         deliver_text(
             &mut app,
             &jobs,
@@ -900,3 +900,14 @@ mod activate;
 mod focus;
 mod fullscreen;
 mod sidebar;
+
+#[test]
+fn no_binding_in_the_key_map_uses_a_function_key() {
+    use crate::ui::keymap::BINDINGS;
+    let f: Vec<_> = BINDINGS
+        .iter()
+        .filter(|b| matches!(b.code, KeyCode::F(_)))
+        .map(|b| b.label)
+        .collect();
+    assert!(f.is_empty(), "function-key bindings: {f:?}");
+}
