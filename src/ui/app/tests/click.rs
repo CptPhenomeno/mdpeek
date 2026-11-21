@@ -177,3 +177,23 @@ fn hit_testing_accounts_for_scroll_position_and_sidebar_width() {
     click(&mut app, x, y);
     assert_eq!(*urls.borrow(), vec!["http://a.b".to_owned()]);
 }
+
+#[test]
+fn render_and_hit_testing_take_the_document_area_from_the_same_function() {
+    use crate::ui::app::areas::areas;
+    // Narrow terminal: the sidebar takes width / 2 = 20 columns, not 30.
+    let (mut app, urls, _) = setup("[l](http://a.b)\n", 41);
+    press(&mut app, KeyCode::Char('s'));
+    let inner = areas(ratatui::layout::Rect::new(0, 0, 41, H), true).document_inner;
+    assert_eq!(inner.x, 21);
+    let f = link_fragments(&app, 0)[0];
+    let x = inner.x + MARGIN + f.start;
+    let y = inner.y + u16::try_from(f.row - app.scroll()).unwrap();
+    click(&mut app, x - 1, y);
+    assert!(urls.borrow().is_empty() || f.start == 0 && MARGIN == 0);
+    click(&mut app, x, y);
+    assert_eq!(*urls.borrow(), vec!["http://a.b".to_owned()]);
+    // Structural: the mouse code keeps no pane arithmetic of its own.
+    let src = include_str!("../click.rs");
+    assert!(!src.contains("fn doc_inner"), "doc_inner still exists");
+}

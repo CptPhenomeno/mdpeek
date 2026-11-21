@@ -16,6 +16,7 @@ use crate::layout::{self, Diagrams, Layout, MARGIN, PictureKey, State};
 use crate::theme;
 
 mod activate;
+mod areas;
 mod click;
 mod focus;
 mod fullscreen;
