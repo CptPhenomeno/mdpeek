@@ -4,6 +4,8 @@ use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
 
+pub mod nav;
+
 use ignore::WalkBuilder;
 
 use crate::cli::{StartTarget, has_supported_extension};
