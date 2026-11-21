@@ -147,7 +147,40 @@ impl App {
     }
 
     /// `r`: re-reads the current file and the sidebar tree.
-    pub(super) fn reload(&mut self) {}
+    ///
+    /// The tree is rescanned only when it was already scanned (a file start
+    /// whose sidebar was never shown stays lazy). A file that cannot be read
+    /// leaves the current content and says so in the status bar (SPEC §4.23).
+    pub(super) fn reload(&mut self) {
+        if let Some(nav) = self.sidebar.nav.as_mut() {
+            match tree::scan(&self.sidebar.root) {
+                Ok(nodes) => nav.rebuild(nodes),
+                Err(err) => self.message = Some(format!("Cannot read folder: {err}")),
+            }
+        }
+        let Some(path) = self.sidebar.open_file.clone() else {
+            return;
+        };
+        let doc = match Document::from_path(&path) {
+            Ok(doc) => doc,
+            Err(err) => {
+                self.message = Some(format!("Cannot reload {}: {err}", self.relative(&path)));
+                return;
+            }
+        };
+        self.message = Some(if doc.invalid_utf8 {
+            "Reloaded | File is not valid UTF-8".to_owned()
+        } else {
+            "Reloaded".to_owned()
+        });
+        for key in self.jobs.reload_for(&doc) {
+            self.pictures.remove(&key);
+        }
+        self.doc = doc;
+        self.relayout();
+        self.scroll = self.scroll.min(self.max_scroll());
+        self.request_pictures();
+    }
 
     fn relative(&self, path: &Path) -> String {
         path.strip_prefix(&self.sidebar.root)
