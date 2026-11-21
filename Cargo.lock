@@ -3026,6 +3026,7 @@ dependencies = [
  "ratatui",
  "ratatui-image",
  "resvg",
+ "rustix 1.1.6",
  "serde_json",
  "syntect",
  "tempfile",
