@@ -146,6 +146,9 @@ impl App {
         }
     }
 
+    /// `r`: re-reads the current file and the sidebar tree.
+    pub(super) fn reload(&mut self) {}
+
     fn relative(&self, path: &Path) -> String {
         path.strip_prefix(&self.sidebar.root)
             .unwrap_or(path)
