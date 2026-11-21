@@ -220,13 +220,7 @@ pub const BINDINGS: &[Binding] = &[
         "Enter",
         "Open the focused link or diagram",
     ),
-    global(
-        KeyCode::Char('q'),
-        KeyModifiers::CONTROL,
-        Action::Quit,
-        "Ctrl+Q",
-        "Quit",
-    ),
+    global(KeyCode::Char('q'), NONE, Action::Quit, "q", "Quit"),
     global(
         KeyCode::Char('d'),
         NONE,
