@@ -332,3 +332,43 @@ fn the_sidebar_tree_of_fixtures_hides_the_hidden_folder_and_the_gitignored_file(
         "hidden shown: {all:?}"
     );
 }
+
+/// The showcase through the real `App` on a `TestBackend`, pictures drawn by the
+/// placeholder renderer (`#`). No job sink is set, so diagrams stay "Rendering diagram…".
+fn app_screen(app: &mut readmd::ui::App) -> ratatui::backend::TestBackend {
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).expect("test terminal");
+    terminal.draw(|f| app.render(f)).expect("draw");
+    terminal.backend().clone()
+}
+
+fn showcase_app() -> readmd::ui::App {
+    let mut app = readmd::ui::App::new(showcase(), "showcase.md".into());
+    app.resize(80, 24);
+    app
+}
+
+#[test]
+fn showcase_first_screen_on_a_test_backend_matches() {
+    let mut app = showcase_app();
+    insta::assert_snapshot!(app_screen(&mut app));
+}
+
+#[test]
+fn showcase_screen_with_the_local_png_drawn_by_the_placeholder_renderer_matches() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = showcase_app();
+    let png = fixtures().join("assets/gradient.png");
+    app.add_picture(
+        PictureKey::Image(png),
+        image::DynamicImage::ImageRgba8(image::RgbaImage::new(GRADIENT_PX.0, GRADIENT_PX.1)),
+    );
+    // Page down until the first picture is on screen (bounded, deterministic).
+    for _ in 0..60 {
+        if format!("{}", app_screen(&mut app)).contains("####") {
+            break;
+        }
+        app.handle_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
+    }
+    insta::assert_snapshot!(app_screen(&mut app));
+}
