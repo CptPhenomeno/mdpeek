@@ -94,6 +94,9 @@ pub fn run(
         &detector,
     );
     let mut app = App::new(doc, rel_path);
+    // Folder scans run on a thread; their results come back on this channel.
+    let (scan_tx, scan_rx) = mpsc::channel();
+    app.set_scan_sink(Box::new(scanner::ThreadScanner(scan_tx)));
     app.set_start(start);
     app.set_opener(Box::new(SystemOpener));
     app.set_text_mode(text_diagrams);
@@ -144,6 +147,10 @@ pub fn run(
         while let Ok(result) = rx.try_recv() {
             dirty = true;
             app.on_result(result);
+        }
+        while let Ok(result) = scan_rx.try_recv() {
+            dirty = true;
+            app.on_scan(result);
         }
         while let Ok(reply) = view_rx.try_recv() {
             dirty = true;

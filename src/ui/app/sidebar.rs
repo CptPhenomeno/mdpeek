@@ -18,9 +18,10 @@ use crate::tree::{
     self, Start,
     nav::{NavKey, Outcome, Row, SidebarNav},
 };
+use crate::ui::scanner::{InlineScanner, ScanResult, ScanSink};
 
 /// State of the sidebar pane.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct Sidebar {
     pub(super) visible: bool,
     /// The sidebar, not the document, has the keyboard focus.
@@ -31,6 +32,25 @@ pub(super) struct Sidebar {
     nav: Option<SidebarNav>,
     /// First row drawn.
     top: usize,
+    /// Runs the folder scans.
+    scanner: Box<dyn ScanSink>,
+    /// A scan is in flight: further requests are ignored until it ends.
+    scanning: bool,
+}
+
+impl Default for Sidebar {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            focused: false,
+            root: PathBuf::new(),
+            open_file: None,
+            nav: None,
+            top: 0,
+            scanner: Box::new(InlineScanner),
+            scanning: false,
+        }
+    }
 }
 
 impl App {
@@ -85,16 +105,27 @@ impl App {
         }
     }
 
-    /// Scans the tree the first time it is needed; a failure leaves it empty.
+    /// Asks for the tree the first time it is needed.
     fn ensure_tree(&mut self) {
-        if self.sidebar.nav.is_some() {
+        if self.sidebar.nav.is_none() {
+            self.request_scan();
+        }
+    }
+
+    /// Starts a background scan of the root; ignored while one is in flight.
+    fn request_scan(&mut self) {
+        if self.sidebar.scanning {
             return;
         }
-        let nodes = tree::scan(&self.sidebar.root).unwrap_or_else(|err| {
-            self.message = Some(format!("Cannot read folder: {err}"));
-            Vec::new()
-        });
-        self.sidebar.nav = Some(SidebarNav::new(nodes, self.sidebar.open_file.as_deref()));
+        self.sidebar.scanning = true;
+        if let Some(result) = self.sidebar.scanner.request(&self.sidebar.root) {
+            self.on_scan(result);
+        }
+    }
+
+    /// Whether a folder scan is in flight.
+    pub fn scanning(&self) -> bool {
+        self.sidebar.scanning
     }
 
     /// Ctrl+Left / Ctrl+Right: moves the focus to the sidebar or the document;
@@ -152,11 +183,8 @@ impl App {
     /// whose sidebar was never shown stays lazy). A file that cannot be read
     /// leaves the current content and says so in the status bar (SPEC §4.23).
     pub(super) fn reload(&mut self) {
-        if let Some(nav) = self.sidebar.nav.as_mut() {
-            match tree::scan(&self.sidebar.root) {
-                Ok(nodes) => nav.rebuild(nodes),
-                Err(err) => self.message = Some(format!("Cannot read folder: {err}")),
-            }
+        if self.sidebar.nav.is_some() {
+            self.request_scan();
         }
         let Some(path) = self.sidebar.open_file.clone() else {
             return;
@@ -201,6 +229,10 @@ impl App {
         let width = usize::from(inner.width);
         let focused = self.sidebar.focused;
         let Some(nav) = self.sidebar.nav.as_ref() else {
+            if self.sidebar.scanning {
+                let line = Line::styled("Scanning…", theme::dim());
+                frame.render_widget(Paragraph::new(line), inner);
+            }
             return;
         };
         let rows = nav.rows();
@@ -272,14 +304,43 @@ const _: () = assert!(SIDEBAR_COLS > BORDER);
 
 impl App {
     /// Installs where folder scans run (the default scans inline).
-    pub fn set_scan_sink(&mut self, _sink: Box<dyn crate::ui::scanner::ScanSink>) {}
+    pub fn set_scan_sink(&mut self, sink: Box<dyn ScanSink>) {
+        self.sidebar.scanner = sink;
+    }
 
-    /// A background scan finished.
-    pub fn on_scan(&mut self, result: crate::ui::scanner::ScanResult) {
-        if let Ok(nodes) = result {
-            if let Some(path) = tree::start_file(&nodes) {
-                self.open_file(&path);
+    /// A scan finished. The first one fills the sidebar and, when nothing is
+    /// open yet, opens the start file (SPEC §3.1.2); later ones (`r`) rebuild
+    /// the tree. A failure says so in the status bar.
+    pub fn on_scan(&mut self, result: ScanResult) {
+        self.sidebar.scanning = false;
+        let nodes = match result {
+            Ok(nodes) => nodes,
+            Err(err) => {
+                self.message = Some(format!("Cannot read folder: {err}"));
+                // The tree already shown stays; a first scan leaves it empty.
+                if self.sidebar.nav.is_none() {
+                    self.sidebar.nav = Some(SidebarNav::new(
+                        Vec::new(),
+                        self.sidebar.open_file.as_deref(),
+                    ));
+                }
+                return;
             }
+        };
+        if let Some(nav) = self.sidebar.nav.as_mut() {
+            nav.rebuild(nodes);
+            return;
+        }
+        let initial = match self.sidebar.open_file {
+            None => tree::start_file(&nodes),
+            Some(_) => None,
+        };
+        self.sidebar.nav = Some(SidebarNav::new(
+            nodes,
+            self.sidebar.open_file.as_deref().or(initial.as_deref()),
+        ));
+        if let Some(path) = initial {
+            self.open_file(&path);
         }
     }
 }

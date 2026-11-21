@@ -119,32 +119,42 @@ pub struct Start {
     pub initial_file: Option<PathBuf>,
 }
 
-/// Decide root, sidebar visibility, tree and initial file for `target`.
-pub fn start(target: &StartTarget) -> io::Result<Start> {
+/// Root, sidebar visibility and start file of `target` without touching the
+/// disk: a directory is not scanned (the viewer scans it in the background and
+/// then applies `start_file`), a file starts with its parent as the root.
+pub fn start_pending(target: &StartTarget) -> Start {
     match target {
         StartTarget::File(file) => {
             let root = match file.parent() {
                 Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
                 _ => PathBuf::from("."),
             };
-            Ok(Start {
+            Start {
                 root,
                 sidebar_visible: false,
                 tree: None,
                 initial_file: Some(file.clone()),
-            })
+            }
         }
-        StartTarget::Directory(root) => {
-            let tree = scan(root)?;
-            let initial_file = start_file(&tree);
-            Ok(Start {
-                root: root.clone(),
-                sidebar_visible: true,
-                tree: Some(tree),
-                initial_file,
-            })
-        }
+        StartTarget::Directory(root) => Start {
+            root: root.clone(),
+            sidebar_visible: true,
+            tree: None,
+            initial_file: None,
+        },
     }
+}
+
+/// Decide root, sidebar visibility, tree and initial file for `target`,
+/// scanning a directory right away.
+pub fn start(target: &StartTarget) -> io::Result<Start> {
+    let mut start = start_pending(target);
+    if let StartTarget::Directory(root) = target {
+        let tree = scan(root)?;
+        start.initial_file = start_file(&tree);
+        start.tree = Some(tree);
+    }
+    Ok(start)
 }
 
 /// The document a directory start opens: README.md among the root's own files

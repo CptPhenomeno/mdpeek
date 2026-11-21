@@ -315,7 +315,7 @@ impl App {
 
     /// Whether render jobs are still outstanding.
     pub fn has_outstanding(&self) -> bool {
-        self.jobs.has_outstanding() || self.view_outstanding()
+        self.jobs.has_outstanding() || self.view_outstanding() || self.scanning()
     }
 
     fn request_pictures(&mut self) {
@@ -574,6 +574,7 @@ impl App {
         let notice = |text: &'static str| vec![Line::styled(text, theme::dim())];
         match self.layout.state {
             State::TooNarrow => notice("Window too narrow"),
+            State::Empty if self.scanning() => notice("Scanning folder…"),
             State::Empty if self.rel_path.is_empty() => notice("No supported files in this folder"),
             State::Empty => notice("Empty document"),
             State::Ready => self
