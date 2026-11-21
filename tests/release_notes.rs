@@ -1,6 +1,8 @@
 //! Delivery tooling: the release-notes script, the Makefile `dist` naming and
 //! the GitHub workflow files.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 

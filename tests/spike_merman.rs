@@ -1,6 +1,8 @@
 //! Learning tests pinning merman and resvg behaviour (KB-6, SPEC §3.4, §4.7).
 //! Findings: docs/spikes/merman-resvg.md.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;

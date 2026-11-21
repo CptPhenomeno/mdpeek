@@ -2,6 +2,8 @@
 //! top-clipped and bottom-clipped picture, per protocol. They pin facts the
 //! picture renderer relies on; see docs/spikes/image-clipping.md.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
+
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
 use ratatui::{
     buffer::{Buffer, CellDiffOption},

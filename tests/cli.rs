@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
+
 use assert_cmd::Command;
 
 #[test]

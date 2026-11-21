@@ -1,6 +1,8 @@
 //! Diagram labels must fit their boxes: the text drawn by resvg is as wide as the
 //! text merman measured, so the label viewports (`overflow:hidden`) clip nothing.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
+
 use readmd::diagram::{Rendered, render_svg};
 use readmd::raster::rasterise;
 

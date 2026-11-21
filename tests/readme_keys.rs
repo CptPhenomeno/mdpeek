@@ -1,6 +1,8 @@
 //! The README key table stays in sync with the key map (every binding, per
 //! context, documentation-only rows included).
 
+#![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
+
 use readmd::ui::keymap::{BINDINGS, Context};
 
 const README: &str = include_str!("../README.md");

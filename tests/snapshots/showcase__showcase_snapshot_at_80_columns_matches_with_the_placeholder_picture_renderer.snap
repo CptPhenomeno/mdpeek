@@ -320,7 +320,7 @@ expression: "render(&layout, 80)"
 |                                                                              |
 |A missing file shows a dimmed placeholder with its alt text:                  |
 |                                                                              |
-|[image not found: fixtures/assets/d                                           |
+|[image not found: fixtures/assets/does-not-exist.png] A missing image         |
 |                                                                              |
 |A remote image is never downloaded; it shows the URL as a placeholder:        |
 |                                                                              |

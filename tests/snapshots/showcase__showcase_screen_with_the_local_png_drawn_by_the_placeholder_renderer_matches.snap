@@ -20,7 +20,7 @@ expression: app_screen(&mut app)
 "│                                                                              │"
 "│ An SVG (rasterised):                                                         │"
 "│                                                                              │"
-"│ [image not found: /home/gabriele/projects/personal/md-reader/fixtures/assets │"
+"│ [image not found: fixtures/assets/logo.svg] Logo sample                      │"
 "│                                                                              │"
 "│ An image inside a paragraph,                                                 │"
 "│                           ########################                           │"

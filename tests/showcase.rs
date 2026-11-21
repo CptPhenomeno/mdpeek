@@ -2,6 +2,8 @@
 //! placeholder pictures, the element coverage of §3.3, the diagrams and the
 //! sidebar edge cases.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
+
 use std::path::{Path, PathBuf};
 
 use readmd::diagram::{Rendered, render_svg};
@@ -22,7 +24,11 @@ fn fixtures() -> PathBuf {
 }
 
 fn showcase() -> Document {
-    Document::from_path(&fixtures().join("showcase.md")).expect("fixtures/showcase.md is readable")
+    // Opened by relative path (the test runner uses the crate root as the
+    // working directory) so image targets are relative too and the snapshots
+    // carry no absolute checkout path.
+    Document::from_path(Path::new("fixtures/showcase.md"))
+        .expect("fixtures/showcase.md is readable")
 }
 
 /// Every block of the document, depth first, footnotes last.
@@ -136,9 +142,7 @@ fn render(layout: &Layout, width: u16) -> String {
             let (left, cols) = slot.unwrap_or((0, 0));
             format!("{}{}", " ".repeat(left), "#".repeat(cols))
         } else {
-            // Image paths are absolute: keep the snapshot independent of the checkout.
             row.text()
-                .replace(fixtures().to_string_lossy().as_ref(), "fixtures")
         };
         let pad = content.saturating_sub(body.chars().count());
         lines.push(format!("|{body}{}|", " ".repeat(pad)));
@@ -367,7 +371,7 @@ fn showcase_first_screen_on_a_test_backend_matches() {
 fn showcase_screen_with_the_local_png_drawn_by_the_placeholder_renderer_matches() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = showcase_app();
-    let png = fixtures().join("assets/gradient.png");
+    let png = PathBuf::from("fixtures/assets/gradient.png");
     app.add_picture(
         PictureKey::Image(png),
         image::DynamicImage::ImageRgba8(image::RgbaImage::new(GRADIENT_PX.0, GRADIENT_PX.1)),
