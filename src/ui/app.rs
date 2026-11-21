@@ -458,7 +458,10 @@ impl App {
             .borders(Borders::ALL)
             .border_style(theme::border(!self.sidebar.focused));
         frame.render_widget(block, document);
-        frame.render_widget(Paragraph::new(self.pane_lines(inner.height)), inner);
+        frame.render_widget(
+            Paragraph::new(self.pane_lines(inner.width, inner.height)),
+            inner,
+        );
         self.draw_pictures(inner, frame.buffer_mut());
         self.draw_search(inner, frame.buffer_mut());
         self.draw_focus(inner, frame.buffer_mut());
@@ -570,10 +573,10 @@ impl App {
         }
     }
 
-    fn pane_lines(&self, height: u16) -> Vec<Line<'static>> {
+    fn pane_lines(&self, width: u16, height: u16) -> Vec<Line<'static>> {
         let notice = |text: &'static str| vec![Line::styled(text, theme::dim())];
         match self.layout.state {
-            State::TooNarrow => notice("Window too narrow"),
+            State::TooNarrow => narrow_notice(width, height),
             State::Empty if self.scanning() => notice("Scanning folder…"),
             State::Empty if self.rel_path.is_empty() => notice("No supported files in this folder"),
             State::Empty => notice("Empty document"),
@@ -617,4 +620,40 @@ impl App {
         let text = format!("{left}{}{right}", " ".repeat(pad));
         Line::styled(text, theme::status())
     }
+}
+
+/// The "Window too narrow" notice for a pane of `width` x `height` cells.
+///
+/// The full sentence is wrapped over as many rows as it needs. When the pane
+/// is too short for that, or too narrow for its longest word, progressively
+/// shorter texts are tried, ending with a single "…" that fits any pane.
+fn narrow_notice(width: u16, height: u16) -> Vec<Line<'static>> {
+    let (width, height) = (usize::from(width), usize::from(height));
+    for text in ["Window too narrow", "Too narrow", "Narrow"] {
+        if let Some(rows) = wrap_words(text, width).filter(|r| r.len() <= height) {
+            return rows
+                .into_iter()
+                .map(|r| Line::styled(r, theme::dim()))
+                .collect();
+        }
+    }
+    vec![Line::styled("…", theme::dim())]
+}
+
+/// Greedy word wrap; `None` when a single word is wider than `width`.
+fn wrap_words(text: &str, width: usize) -> Option<Vec<String>> {
+    let mut rows: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        if word.width() > width {
+            return None;
+        }
+        match rows.last_mut() {
+            Some(row) if row.width() + 1 + word.width() <= width => {
+                row.push(' ');
+                row.push_str(word);
+            }
+            _ => rows.push(word.to_owned()),
+        }
+    }
+    Some(rows)
 }
