@@ -6,6 +6,7 @@ pub mod keymap;
 pub mod opener;
 pub mod overlay;
 pub mod pictures;
+pub mod scanner;
 pub mod terminal;
 pub mod view_worker;
 

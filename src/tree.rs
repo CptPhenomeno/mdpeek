@@ -136,14 +136,7 @@ pub fn start(target: &StartTarget) -> io::Result<Start> {
         }
         StartTarget::Directory(root) => {
             let tree = scan(root)?;
-            // README.md is looked up among the root's own files only.
-            let readme = tree.iter().find_map(|n| match n {
-                Node::File { name, path } if name.eq_ignore_ascii_case("readme.md") => {
-                    Some(path.clone())
-                }
-                _ => None,
-            });
-            let initial_file = readme.or_else(|| first_file(&tree));
+            let initial_file = start_file(&tree);
             Ok(Start {
                 root: root.clone(),
                 sidebar_visible: true,
@@ -152,6 +145,16 @@ pub fn start(target: &StartTarget) -> io::Result<Start> {
             })
         }
     }
+}
+
+/// The document a directory start opens: README.md among the root's own files
+/// (case-insensitive), else the first file in tree order (SPEC §3.1.2).
+pub fn start_file(tree: &[Node]) -> Option<PathBuf> {
+    let readme = tree.iter().find_map(|n| match n {
+        Node::File { name, path } if name.eq_ignore_ascii_case("readme.md") => Some(path.clone()),
+        _ => None,
+    });
+    readme.or_else(|| first_file(tree))
 }
 
 /// First file in depth-first tree order.

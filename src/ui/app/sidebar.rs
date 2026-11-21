@@ -117,7 +117,7 @@ impl App {
 
     /// Shows `path` in the document pane; the sidebar keeps the focus. A load
     /// error leaves the current document and says so in the status bar.
-    fn open_file(&mut self, path: &Path) {
+    pub(super) fn open_file(&mut self, path: &Path) {
         let doc = match Document::from_path(path) {
             Ok(doc) => doc,
             Err(err) => {
@@ -269,3 +269,17 @@ fn truncate(text: &str, width: usize) -> String {
 }
 
 const _: () = assert!(SIDEBAR_COLS > BORDER);
+
+impl App {
+    /// Installs where folder scans run (the default scans inline).
+    pub fn set_scan_sink(&mut self, _sink: Box<dyn crate::ui::scanner::ScanSink>) {}
+
+    /// A background scan finished.
+    pub fn on_scan(&mut self, result: crate::ui::scanner::ScanResult) {
+        if let Ok(nodes) = result {
+            if let Some(path) = tree::start_file(&nodes) {
+                self.open_file(&path);
+            }
+        }
+    }
+}
