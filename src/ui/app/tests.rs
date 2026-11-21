@@ -1024,6 +1024,7 @@ mod reload;
 mod scan_async;
 mod search;
 mod sidebar;
+mod status;
 mod toc;
 
 #[test]
