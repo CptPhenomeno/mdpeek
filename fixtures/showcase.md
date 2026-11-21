@@ -68,6 +68,8 @@ and emoji such as 🚀 ✅ ⚠️ keep the layout aligned. Accents: àèéìòù
    2. Two point two
 3. Three with a long text that wraps onto the next row and must hang under the text, not under the number
 
+A list that starts at ten:
+
 10. Starts at ten
 11. Eleven
 12. Twelve
