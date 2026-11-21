@@ -9,7 +9,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use super::keymap::{Action, action_for, sidebar_action};
+use super::keymap::{Action, action_for, input_action, sidebar_action};
 use crate::doc::Document;
 use crate::graphics::{PictureRequest, PictureSet};
 use crate::layout::{self, Diagrams, Layout, MARGIN, PictureKey, State};
@@ -55,7 +55,7 @@ pub struct App {
     cell: (u16, u16),
     /// Open overlays (popups): pictures leave them uncovered.
     overlays: Vec<Rect>,
-    /// Diagrams are shown as text drawings (F8, `--text-diagrams`).
+    /// Diagrams are shown as text drawings (`d`, `--text-diagrams`).
     text_mode: bool,
     /// Focused link or diagram (SPEC §3.6.1).
     focus: Option<focus::FocusId>,
@@ -299,6 +299,13 @@ impl App {
         self.quit
     }
 
+    /// Whether a text input owns the keyboard. Letter keys are then typed as
+    /// text, not run as commands. Hook for the search input (KB-54), which
+    /// makes this true while it is open and consumes the typed characters.
+    fn text_input_open(&self) -> bool {
+        false
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) {
         if key.kind == KeyEventKind::Release {
             return;
@@ -308,10 +315,10 @@ impl App {
             self.handle_view_key(key);
             return;
         }
-        let action = if self.sidebar.focused {
-            sidebar_action(key)
-        } else {
-            action_for(key)
+        let action = match (self.text_input_open(), self.sidebar.focused) {
+            (false, true) => sidebar_action(key),
+            (false, false) => action_for(key),
+            (true, focused) => input_action(key, focused),
         };
         let Some(action) = action else {
             return;
@@ -333,7 +340,8 @@ impl App {
             Action::Activate => self.activate(),
             Action::Quit => self.quit = true,
             Action::ToggleSidebar => self.toggle_sidebar(),
-            Action::SwitchFocus => self.switch_focus(),
+            Action::FocusSidebar => self.focus_sidebar(true),
+            Action::FocusDocument => self.focus_sidebar(false),
             Action::Nav(key) => self.sidebar_key(key),
             _ => {}
         }

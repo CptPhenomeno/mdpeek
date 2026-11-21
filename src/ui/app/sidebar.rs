@@ -109,10 +109,11 @@ impl App {
         self.sidebar.nav = Some(SidebarNav::new(nodes, self.sidebar.open_file.as_deref()));
     }
 
-    /// F6: moves the focus between the panes while the sidebar is visible.
-    pub(super) fn switch_focus(&mut self) {
+    /// Ctrl+Left / Ctrl+Right: moves the focus to the sidebar or the document;
+    /// it does nothing while the sidebar is hidden.
+    pub(super) fn focus_sidebar(&mut self, sidebar: bool) {
         if self.sidebar.visible {
-            self.sidebar.focused = !self.sidebar.focused;
+            self.sidebar.focused = sidebar;
         }
     }
 
