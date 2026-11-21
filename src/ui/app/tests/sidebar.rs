@@ -118,6 +118,16 @@ fn ctrl_arrows_switch_focus_between_sidebar_and_document_only_while_the_sidebar_
 }
 
 #[test]
+fn q_quits_from_sidebar_focus() {
+    let dir = project();
+    let mut app = app_with(dir_start(dir.path()));
+    ctrl(&mut app, KeyCode::Left);
+    assert!(app.sidebar_focused());
+    press(&mut app, KeyCode::Char('q'));
+    assert!(app.should_quit());
+}
+
+#[test]
 fn the_focused_pane_has_the_highlighted_border() {
     let dir = project();
     let mut app = app_with(dir_start(dir.path()));

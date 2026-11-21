@@ -186,16 +186,20 @@ fn resize_recomputes_the_layout_and_keeps_the_same_document_position_at_the_top(
 }
 
 #[test]
-fn ctrl_q_quits_and_f10_does_not() {
+fn q_quits_from_document_focus() {
     let mut app = app_from("hi", 40, 10);
     assert!(!app.should_quit());
     press(&mut app, KeyCode::Char('q'));
-    assert!(!app.should_quit());
-    press(&mut app, KeyCode::F(10));
-    assert!(!app.should_quit());
+    assert!(app.should_quit());
+}
+
+#[test]
+fn ctrl_q_no_longer_quits() {
     let mut app = app_from("hi", 40, 10);
     app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
-    assert!(app.should_quit());
+    assert!(!app.should_quit());
+    app.handle_key(KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::SHIFT));
+    assert!(!app.should_quit());
 }
 
 #[test]
