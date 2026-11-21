@@ -948,7 +948,7 @@ mod pictures {
         let (mut app, jobs) = start_search();
         finish_diagrams(&mut app, &jobs);
         assert_eq!(search_status_text(&app), "match 1/3");
-        press(&mut app, KeyCode::Char('N'));
+        app.handle_key(KeyEvent::new(KeyCode::Char('N'), KeyModifiers::SHIFT));
         assert_eq!(search_status_text(&app), "match 3/3");
         assert_eq!(current_text(&app), "gamma diagram");
     }

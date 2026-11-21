@@ -382,6 +382,10 @@ fn diagram_rows(n: usize, src: &str, index: usize, content: usize, cx: &Ctx) -> 
         DiagramState::Text(_) | DiagramState::TextUnavailable if !text_mode => DiagramState::Ready,
         other => other,
     };
+    // Text of a diagram block is never searchable and takes no text unit, so the
+    // numbering of the following blocks does not depend on the diagram's state
+    // (SPEC §3.9.2, KB-87).
+    let units_before = cx.units.get();
     let mut rows = match state {
         DiagramState::Pending(hint) => placeholder_rows(hint, index, content, cx),
         DiagramState::Ready => match cx.sizes.natural_size(&key) {
@@ -441,8 +445,12 @@ fn diagram_rows(n: usize, src: &str, index: usize, content: usize, cx: &Ctx) -> 
             rows
         }
     };
+    cx.units.set(units_before);
     for row in &mut rows {
         clip(row, content);
+        for span in &mut row.spans {
+            span.unit = None;
+        }
     }
     let cols = content as u16;
     rows[0].slot = Some(Slot {
