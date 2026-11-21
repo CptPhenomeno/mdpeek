@@ -70,6 +70,8 @@ pub struct App {
     view_sink: Option<Box<dyn super::view_worker::ViewSink>>,
     /// Generation of the last view request: older replies are dropped.
     view_generation: u64,
+    /// Diagram last clicked and when, for the double click.
+    last_click: Option<(PictureKey, std::time::Duration)>,
     quit: bool,
 }
 
@@ -103,6 +105,7 @@ impl App {
             view: None,
             view_sink: None,
             view_generation: 0,
+            last_click: None,
             quit: false,
         };
         app.relayout();
@@ -357,6 +360,7 @@ impl App {
         match mouse.kind {
             MouseEventKind::ScrollDown => self.scroll_by(rows),
             MouseEventKind::ScrollUp => self.scroll_by(-rows),
+            MouseEventKind::Down(_) => self.click(mouse),
             _ => {}
         }
         self.request_pictures();
