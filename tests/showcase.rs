@@ -136,7 +136,9 @@ fn render(layout: &Layout, width: u16) -> String {
             let (left, cols) = slot.unwrap_or((0, 0));
             format!("{}{}", " ".repeat(left), "#".repeat(cols))
         } else {
+            // Image paths are absolute: keep the snapshot independent of the checkout.
             row.text()
+                .replace(fixtures().to_string_lossy().as_ref(), "fixtures")
         };
         let pad = content.saturating_sub(body.chars().count());
         lines.push(format!("|{body}{}|", " ".repeat(pad)));
