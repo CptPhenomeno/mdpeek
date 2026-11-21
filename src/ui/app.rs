@@ -21,6 +21,7 @@ pub use areas::{Areas, areas};
 mod click;
 mod focus;
 mod fullscreen;
+mod help;
 mod search;
 mod sidebar;
 #[cfg(test)]
@@ -370,6 +371,7 @@ impl App {
             Action::FocusPrev => self.focus_step(false),
             Action::Escape => self.escape(),
             Action::OpenToc => self.open_toc(),
+            Action::OpenHelp => {}
             Action::SearchOpen => self.open_search(),
             Action::SearchNext => self.search_step(true),
             Action::SearchPrev => self.search_step(false),

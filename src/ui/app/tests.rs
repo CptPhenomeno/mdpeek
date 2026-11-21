@@ -903,6 +903,7 @@ mod pictures {
 mod activate;
 mod focus;
 mod fullscreen;
+mod help;
 mod search;
 mod sidebar;
 mod toc;

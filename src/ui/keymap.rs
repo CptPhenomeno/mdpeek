@@ -41,6 +41,7 @@ pub enum Action {
     CloseFullscreen,
     // Overlays (SPEC §3.10).
     OpenToc,
+    OpenHelp,
     TocUp,
     TocDown,
     TocJump,
@@ -284,6 +285,13 @@ pub const BINDINGS: &[Binding] = &[
         Action::OpenToc,
         "t",
         "Table of contents",
+    ),
+    global(
+        KeyCode::Char('?'),
+        NONE,
+        Action::OpenHelp,
+        "?",
+        "Help: list all keys",
     ),
     global(
         KeyCode::Char('s'),
