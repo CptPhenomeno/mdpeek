@@ -906,6 +906,7 @@ mod fullscreen;
 mod help;
 mod perf;
 mod reload;
+mod scan_async;
 mod search;
 mod sidebar;
 mod toc;
