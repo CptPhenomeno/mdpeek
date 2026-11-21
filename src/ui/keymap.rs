@@ -1,4 +1,4 @@
-//! Central key map: key -> action table shared by dispatch and the F1 help.
+//! Central key map: key -> action table shared by dispatch and the help.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -46,6 +46,12 @@ pub enum Action {
     TocDown,
     TocJump,
     CloseOverlay,
+    HelpUp,
+    HelpDown,
+    HelpPageUp,
+    HelpPageDown,
+    /// A row that only documents an input handled elsewhere (typing, mouse).
+    Info,
 }
 
 /// Where a binding applies.
@@ -59,8 +65,28 @@ pub enum Context {
     Sidebar,
     /// The table-of-contents overlay, while it is open.
     Toc,
+    /// The help overlay, while it is open.
+    Help,
     /// Keys that work whichever pane has focus.
     Global,
+    /// The search input, while it is open (typed text is handled by the input).
+    Search,
+    /// Mouse input; rows are documentation only.
+    Mouse,
+}
+
+impl Context {
+    /// Contexts in help order, with their headings.
+    pub const HELP_ORDER: [(Context, &'static str); 8] = [
+        (Context::Global, "Global"),
+        (Context::Document, "Document"),
+        (Context::Sidebar, "Sidebar"),
+        (Context::Search, "Search input"),
+        (Context::Mouse, "Mouse"),
+        (Context::Fullscreen, "Full-screen view"),
+        (Context::Toc, "Contents (TOC)"),
+        (Context::Help, "Help"),
+    ];
 }
 
 impl Binding {
@@ -155,6 +181,34 @@ const fn view(
     }
 }
 
+/// A documentation-only row: it never matches a key event.
+const fn info(context: Context, label: &'static str, description: &'static str) -> Binding {
+    Binding {
+        context,
+        code: KeyCode::Null,
+        modifiers: NONE,
+        action: Action::Info,
+        label,
+        description,
+    }
+}
+
+const fn help(
+    code: KeyCode,
+    action: Action,
+    label: &'static str,
+    description: &'static str,
+) -> Binding {
+    Binding {
+        context: Context::Help,
+        code,
+        modifiers: NONE,
+        action,
+        label,
+        description,
+    }
+}
+
 const fn toc(
     code: KeyCode,
     action: Action,
@@ -171,7 +225,7 @@ const fn toc(
     }
 }
 
-/// Document-focus bindings (SPEC §3.8); later keys and the F1 help extend this table.
+/// Document-focus bindings (SPEC §3.8); later keys and the help extend this table.
 pub const BINDINGS: &[Binding] = &[
     bind(
         KeyCode::Up,
@@ -241,7 +295,7 @@ pub const BINDINGS: &[Binding] = &[
         NONE,
         Action::Escape,
         "Esc",
-        "Close the search input, clear the search, or clear the focus",
+        "Close overlay, then clear search, then clear focus",
     ),
     bind(
         KeyCode::Enter,
@@ -371,6 +425,51 @@ pub const BINDINGS: &[Binding] = &[
         "q",
         "Close the overlay",
     ),
+    info(
+        Context::Search,
+        "Type",
+        "Edit the query; matches update while typing",
+    ),
+    info(Context::Search, "Backspace", "Delete the last character"),
+    info(
+        Context::Search,
+        "Enter",
+        "Close the input, keep the highlights",
+    ),
+    info(
+        Context::Search,
+        "Esc",
+        "Close the input and clear the highlights",
+    ),
+    info(Context::Mouse, "Mouse wheel", "Scroll three rows"),
+    info(Context::Mouse, "Click", "Activate a link, focus a diagram"),
+    info(Context::Mouse, "Double click", "Open a diagram full screen"),
+    help(KeyCode::Up, Action::HelpUp, "Up", "Scroll the help up"),
+    help(
+        KeyCode::Down,
+        Action::HelpDown,
+        "Down",
+        "Scroll the help down",
+    ),
+    help(
+        KeyCode::PageUp,
+        Action::HelpPageUp,
+        "PgUp",
+        "Scroll the help one page up",
+    ),
+    help(
+        KeyCode::PageDown,
+        Action::HelpPageDown,
+        "PgDn",
+        "Scroll the help one page down",
+    ),
+    help(KeyCode::Esc, Action::CloseOverlay, "Esc", "Close the help"),
+    help(
+        KeyCode::Char('q'),
+        Action::CloseOverlay,
+        "q",
+        "Close the help",
+    ),
     view(KeyCode::Char('+'), Action::ZoomIn, "+", "Zoom in"),
     view(KeyCode::Char('='), Action::ZoomIn, "=", "Zoom in"),
     view(KeyCode::Char('-'), Action::ZoomOut, "-", "Zoom out"),
@@ -414,6 +513,11 @@ pub fn toc_action(key: KeyEvent) -> Option<Action> {
     action_in(Context::Toc, key)
 }
 
+/// Action bound to `key` while the help overlay is open.
+pub fn help_action(key: KeyEvent) -> Option<Action> {
+    action_in(Context::Help, key)
+}
+
 /// Action bound to `key` while the sidebar has focus (or globally), if any.
 pub fn sidebar_action(key: KeyEvent) -> Option<Action> {
     action_in(Context::Sidebar, key).or_else(|| action_in(Context::Global, key))
@@ -442,7 +546,13 @@ pub fn action_in_input(context: Context, key: KeyEvent) -> Option<Action> {
 }
 
 fn find(context: Context, key: KeyEvent) -> Option<&'static Binding> {
+    // Shift is needed to type `?`, `+` and the like, and terminals differ on
+    // whether they report it: for a non-letter character it carries no meaning.
+    let modifiers = match key.code {
+        KeyCode::Char(c) if !c.is_alphabetic() => key.modifiers - KeyModifiers::SHIFT,
+        _ => key.modifiers,
+    };
     BINDINGS
         .iter()
-        .find(|b| b.context == context && b.code == key.code && b.modifiers == key.modifiers)
+        .find(|b| b.context == context && b.code == key.code && b.modifiers == modifiers)
 }

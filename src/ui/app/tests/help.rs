@@ -153,7 +153,7 @@ fn up_down_and_pages_scroll_a_help_taller_than_the_pane() {
     question(&mut app);
     let first = screen_text(&mut app, 60, 8 + CHROME);
     assert!(first.contains("Global"));
-    for _ in 0..40 {
+    for _ in 0..120 {
         press(&mut app, KeyCode::Down);
     }
     let last = screen_text(&mut app, 60, 8 + CHROME);
@@ -161,7 +161,7 @@ fn up_down_and_pages_scroll_a_help_taller_than_the_pane() {
     assert!(last.contains("Contents") || last.contains("Esc"), "{last}");
     press(&mut app, KeyCode::PageUp);
     press(&mut app, KeyCode::Up);
-    for _ in 0..80 {
+    for _ in 0..150 {
         press(&mut app, KeyCode::Up);
     }
     assert_eq!(screen_text(&mut app, 60, 8 + CHROME), first);
