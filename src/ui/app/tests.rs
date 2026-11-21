@@ -915,3 +915,4 @@ fn no_binding_in_the_key_map_uses_a_function_key() {
         .collect();
     assert!(f.is_empty(), "function-key bindings: {f:?}");
 }
+mod click;
