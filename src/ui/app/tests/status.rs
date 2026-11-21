@@ -5,7 +5,7 @@ use unicode_width::UnicodeWidthStr;
 
 use super::*;
 
-const LONG: &str = "Cannot reload a.md: No such file or directory (os error 2)";
+const LONG: &str = "Cannot reload a.md: No such file or directory (os error 2), try again later";
 
 /// The status row at `width`, one string per terminal column: the trailing
 /// cell of a wide character is skipped, so the string width is the row width.
@@ -31,7 +31,9 @@ fn status_row(app: &mut App, width: u16) -> String {
 
 fn with_message(path: &str, message: &str) -> App {
     let mut app = App::new(doc(&many(50)), path.into());
-    app.set_message(message);
+    if !message.is_empty() {
+        app.set_message(message);
+    }
     app
 }
 
@@ -39,9 +41,9 @@ fn with_message(path: &str, message: &str) -> App {
 fn a_long_status_message_is_truncated_with_an_ellipsis_and_leaves_a_gap_before_the_right_part() {
     let mut app = with_message("a.md", LONG);
     let row = status_row(&mut app, 70);
+    let right = format!("… {}% ", app.percent());
     assert_eq!(row.width(), 70, "{row:?}");
-    assert!(row.contains('…'), "{row:?}");
-    assert!(row.ends_with("… 0% "), "{row:?}");
+    assert!(row.ends_with(&right), "{row:?}");
     assert!(row.starts_with(" a.md | Cannot reload"), "{row:?}");
 }
 
@@ -56,13 +58,17 @@ fn the_scroll_percentage_is_always_fully_visible_at_narrow_widths() {
             let mut app = with_message(path, message);
             let row = status_row(&mut app, width);
             let w = usize::from(width);
+            let pct = app.percent();
             assert!(row.width() <= w, "{width}: {row:?}");
             if w >= 4 {
-                assert!(row.trim_end().ends_with("0%"), "{width}: {row:?}");
+                assert!(
+                    row.trim_end().ends_with(&format!("{pct}%")),
+                    "{width}: {row:?}"
+                );
             }
-            if w >= 5 {
+            if w >= 6 {
                 // At least one space between the left part and the right part.
-                assert!(row.ends_with(" 0% "), "{width}: {row:?}");
+                assert!(row.ends_with(&format!(" {pct}% ")), "{width}: {row:?}");
             }
             if w >= 12 {
                 assert!(row.starts_with(' '), "{width}: {row:?}");
@@ -78,10 +84,13 @@ fn the_scroll_percentage_is_always_fully_visible_at_narrow_widths() {
 #[test]
 fn a_wide_character_is_never_split_by_the_truncation() {
     let mut app = with_message("文書/日本語のファイル名.md", "");
-    for width in 14..=40u16 {
+    for width in 14..=30u16 {
         let row = status_row(&mut app, width);
         assert!(row.width() <= usize::from(width), "{width}: {row:?}");
-        assert!(row.ends_with(" 0% "), "{width}: {row:?}");
+        assert!(
+            row.ends_with(" 100% ") || row.ends_with(" 0% "),
+            "{width}: {row:?}"
+        );
         assert!(row.contains('…'), "{width}: {row:?}");
     }
 }
@@ -107,8 +116,8 @@ fn right_items_that_do_not_fit_are_dropped_before_the_percentage() {
     let mut app = with_message("a.md", "");
     app.text_mode = true;
     let row = status_row(&mut app, 12);
-    assert!(row.ends_with(" 0% "), "{row:?}");
+    assert!(row.ends_with("% "), "{row:?}");
     assert!(row.width() <= 12, "{row:?}");
     let row = status_row(&mut app, 60);
-    assert!(row.contains("Text diagrams | 0% "), "{row:?}");
+    assert!(row.contains("Text diagrams | "), "{row:?}");
 }

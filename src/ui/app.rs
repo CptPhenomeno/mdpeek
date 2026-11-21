@@ -24,6 +24,7 @@ mod fullscreen;
 mod help;
 mod search;
 mod sidebar;
+mod status;
 #[cfg(test)]
 mod tests;
 mod toc;
@@ -605,31 +606,28 @@ impl App {
         // it stays while the document is open, whatever message comes and goes.
         let warning = self.doc.invalid_utf8.then_some(NOT_UTF8);
         let left = if self.search_input {
-            format!(" Search: {}_", self.search.query())
+            status::Left::Input {
+                prompt: "Search: ",
+                typed: self.search.query().to_owned(),
+            }
         } else {
             let parts = [
                 Some(self.rel_path.as_str()),
                 warning,
                 self.message.as_deref(),
             ];
-            format!(
-                " {}",
-                parts.into_iter().flatten().collect::<Vec<_>>().join(" | ")
-            )
+            status::Left::Text(parts.into_iter().flatten().collect::<Vec<_>>().join(" | "))
         };
-        let mode = if self.text_mode {
-            "Text diagrams | "
-        } else {
-            ""
-        };
-        let found = self
-            .search_status()
-            .map(|s| format!("{s} | "))
-            .unwrap_or_default();
-        let right = format!("{found}{mode}{}% ", self.percent());
-        let pad = usize::from(width).saturating_sub(left.width() + right.width());
-        let text = format!("{left}{}{right}", " ".repeat(pad));
-        Line::styled(text, theme::status())
+        // Drop ranks: the percentage stays, then the match counter, then the mode.
+        let mut right = Vec::new();
+        if let Some(found) = self.search_status() {
+            right.push((found, 1));
+        }
+        if self.text_mode {
+            right.push(("Text diagrams".to_owned(), 2));
+        }
+        right.push((format!("{}%", self.percent()), 0));
+        Line::styled(status::compose(&left, &right, width), theme::status())
     }
 }
 
