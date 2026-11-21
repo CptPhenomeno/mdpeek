@@ -9,3 +9,4 @@
 .kanban/kb.db
 .kanban/kb.db-wal
 .kanban/kb.db-shm
+dist

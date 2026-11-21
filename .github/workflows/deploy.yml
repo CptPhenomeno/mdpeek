@@ -1,0 +1,62 @@
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { runner: ubuntu-latest, os: linux, arch: amd64 }
+          - { runner: ubuntu-24.04-arm, os: linux, arch: arm64 }
+          - { runner: macos-15-intel, os: darwin, arch: amd64 }
+          - { runner: macos-14, os: darwin, arch: arm64 }
+    steps:
+      - name: Checkout readmd
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup
+        uses: ./.github/actions/setup-and-check
+
+      - name: Create binary
+        run: make dist
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: readmd-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/readmd-*
+          if-no-files-found: error
+
+  release:
+    name: Release readmd
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout readmd
+        uses: actions/checkout@v7.0.1
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4.3.0
+        with:
+          path: dist
+          pattern: readmd-*
+          merge-multiple: true
+
+      - name: Compute Checksums
+        run: cd dist && sha256sum readmd-* > checksums.txt
+
+      - name: Extract release notes
+        run: ./.github/scripts/release-notes.sh "${GITHUB_REF_NAME}" > release.md
+
+      - name: Create Github release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${GITHUB_REF_NAME}" --notes-file release.md dist/readmd-* dist/checksums.txt
