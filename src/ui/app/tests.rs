@@ -148,6 +148,66 @@ fn pane_narrower_than_20_columns_renders_window_too_narrow() {
     assert!(text.contains("hello"));
 }
 
+/// Interior rows of the document pane for a terminal with a `w` x `h` pane
+/// (two border columns, two border rows and the status bar around it).
+fn narrow_pane(w: u16, h: u16) -> (Vec<String>, Buffer) {
+    let (tw, th) = (w + 2, h + CHROME);
+    let mut app = app_from("hello", tw, th);
+    let mut terminal = Terminal::new(TestBackend::new(tw, th)).unwrap();
+    terminal.draw(|f| app.render(f)).unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let rows = (1..=h)
+        .map(|y| {
+            (1..=w)
+                .map(|x| buffer[(x, y)].symbol().to_owned())
+                .collect()
+        })
+        .collect();
+    (rows, buffer)
+}
+
+#[test]
+fn narrow_message_is_fully_readable_in_a_pane_of_16_columns() {
+    let (rows, _) = narrow_pane(16, 8);
+    let text = rows.join("\n");
+    assert!(text.contains("Window"), "{text}");
+    assert!(text.contains("too narrow"), "{text}");
+}
+
+#[test]
+fn narrow_message_never_clips_a_word_at_any_pane_size() {
+    let full: &[&str] = &["Window", "too", "narrow"];
+    let shorts: [&[&str]; 3] = [&["Too", "narrow"], &["Narrow"], &["…"]];
+    for w in 1..=20u16 {
+        for h in 1..=5u16 {
+            let (rows, buffer) = narrow_pane(w, h);
+            let words: Vec<&str> = rows.iter().flat_map(|r| r.split_whitespace()).collect();
+            if w >= crate::layout::MIN_WIDTH {
+                continue; // wide enough for the document
+            }
+            assert!(
+                words == full || shorts.iter().any(|s| words == *s),
+                "{w}x{h}: {rows:?}"
+            );
+            // Nothing outside the pane, and every cell keeps the opaque theme.
+            let area = buffer.area;
+            for y in 0..area.height {
+                for x in 0..area.width {
+                    let cell = &buffer[(x, y)];
+                    let inside = (1..=w).contains(&x) && (1..=h).contains(&y);
+                    if !inside {
+                        assert!(
+                            !cell.symbol().chars().any(char::is_alphabetic),
+                            "{w}x{h}: text outside the pane at {x},{y}"
+                        );
+                    }
+                    assert_ne!(cell.bg, ratatui::style::Color::Reset, "{w}x{h} {x},{y}");
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn non_utf8_file_shows_file_is_not_valid_utf8_in_the_status_bar() {
     let document = Document::from_bytes(b"caf\xff ok", Source::Markdown);
