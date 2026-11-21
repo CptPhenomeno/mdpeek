@@ -37,36 +37,35 @@ fn tokens(pieces: Vec<Piece>) -> Vec<Token> {
             }
             Piece::Text(span) => span,
         };
-        let mut run = String::new();
+        let part = |text: &str| RowSpan {
+            text: text.to_owned(),
+            style: span.style,
+            link: span.link.clone(),
+            unit: span.unit,
+        };
+        // Runs of whitespace and of non-whitespace, sliced out of the text.
+        let mut start = 0;
         let mut run_space = false;
-        let emit =
-            |run: &mut String, space: bool, word: &mut Vec<RowSpan>, out: &mut Vec<Token>| {
-                if run.is_empty() {
-                    return;
-                }
-                let part = RowSpan {
-                    text: std::mem::take(run),
-                    ..span.clone()
-                };
-                if space {
-                    flush(word, out);
-                    out.push(Token::Space(RowSpan {
-                        text: " ".into(),
-                        ..part
-                    }));
-                } else {
-                    word.push(part);
-                }
-            };
-        for c in span.text.chars() {
+        let emit = |text: &str, space: bool, word: &mut Vec<RowSpan>, out: &mut Vec<Token>| {
+            if text.is_empty() {
+                return;
+            }
+            if space {
+                flush(word, out);
+                out.push(Token::Space(part(" ")));
+            } else {
+                word.push(part(text));
+            }
+        };
+        for (i, c) in span.text.char_indices() {
             let space = c.is_whitespace();
             if space != run_space {
-                emit(&mut run, run_space, &mut word, &mut out);
+                emit(&span.text[start..i], run_space, &mut word, &mut out);
+                start = i;
                 run_space = space;
             }
-            run.push(c);
         }
-        emit(&mut run, run_space, &mut word, &mut out);
+        emit(&span.text[start..], run_space, &mut word, &mut out);
     }
     flush(&mut word, &mut out);
     out
@@ -87,7 +86,9 @@ impl Lines {
             }
             _ => self.cur.push(RowSpan {
                 text: text.to_owned(),
-                ..like.clone()
+                style: like.style,
+                link: like.link.clone(),
+                unit: like.unit,
             }),
         }
     }
@@ -100,6 +101,13 @@ impl Lines {
     /// Add a word to the current line, breaking it by characters when needed.
     fn place(&mut self, word: &[RowSpan]) {
         for span in word {
+            // Fast path: the whole run fits on the line.
+            let whole = width(&span.text);
+            if self.used + whole <= self.max {
+                self.push(&span.text, span);
+                self.used += whole;
+                continue;
+            }
             for c in span.text.chars() {
                 let w = c.width().unwrap_or(0);
                 if self.used + w > self.max && self.used > 0 {
@@ -161,7 +169,9 @@ pub fn chunk(text: &str, like: &RowSpan, max: usize) -> Vec<Vec<RowSpan>> {
         }
         lines.place(&[RowSpan {
             text: line.to_owned(),
-            ..like.clone()
+            style: like.style,
+            link: like.link.clone(),
+            unit: like.unit,
         }]);
     }
     if !lines.cur.is_empty() {

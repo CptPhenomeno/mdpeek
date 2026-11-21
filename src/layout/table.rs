@@ -68,6 +68,7 @@ fn border(widths: &[usize], left: char, mid: char, right: char, index: usize) ->
         kind: RowKind::Table,
         block: index,
         slot: None,
+        lazy: None,
         spans: vec![RowSpan {
             text,
             style: theme::rule(),
@@ -113,6 +114,7 @@ fn band(cells: &[Lines], widths: &[usize], align: &[Align], index: usize) -> Vec
                 kind: RowKind::Table,
                 block: index,
                 slot: None,
+                lazy: None,
                 spans,
             }
         })
@@ -135,7 +137,10 @@ pub fn rows(table: &Table, index: usize, content: usize, units: &Counter<usize>)
     let mut min = vec![1usize; all_cols];
     let every = std::iter::once((&table.header, header_style))
         .chain(table.rows.iter().map(|r| (r, theme::body())));
+    // Cells wrapped at unlimited width: reused when their column is not shrunk.
+    let mut unwrapped: Vec<Vec<Lines>> = Vec::new();
     for (row, style) in every {
+        let mut kept = Vec::new();
         for (c, cell) in row.iter().take(all_cols).enumerate() {
             let lines = cell_lines(cell, style, huge);
             let w = lines.iter().map(|l| line_width(l)).max().unwrap_or(0);
@@ -147,7 +152,9 @@ pub fn rows(table: &Table, index: usize, content: usize, units: &Counter<usize>)
             {
                 min[c] = 2;
             }
+            kept.push(lines);
         }
+        unwrapped.push(kept);
     }
     let fits = natural.iter().sum::<usize>() + 3 * all_cols < content;
     let mut cols = all_cols;
@@ -163,11 +170,14 @@ pub fn rows(table: &Table, index: usize, content: usize, units: &Counter<usize>)
     }
     let avail = content.saturating_sub(3 * cols + 1 + usize::from(marker));
     let widths = widths(&natural[..cols], &min[..cols], avail);
-    let lay = |row: &[Cell], style: Style| -> Vec<Lines> {
+    let mut lay = |n: usize, row: &[Cell], style: Style| -> Vec<Lines> {
         (0..cols)
             .map(|c| match row.get(c) {
                 Some(cell) => {
-                    let mut lines = cell_lines(cell, style, widths[c]);
+                    let mut lines = match unwrapped[n].get_mut(c) {
+                        Some(done) if widths[c] >= natural[c] => std::mem::take(done),
+                        _ => cell_lines(cell, style, widths[c]),
+                    };
                     tag(&mut lines, units);
                     lines
                 }
@@ -177,14 +187,19 @@ pub fn rows(table: &Table, index: usize, content: usize, units: &Counter<usize>)
     };
     let mut out = vec![border(&widths, '┌', '┬', '┐', index)];
     out.extend(band(
-        &lay(&table.header, header_style),
+        &lay(0, &table.header, header_style),
         &widths,
         &table.align,
         index,
     ));
     out.push(border(&widths, '├', '┼', '┤', index));
-    for row in &table.rows {
-        out.extend(band(&lay(row, theme::body()), &widths, &table.align, index));
+    for (n, row) in table.rows.iter().enumerate() {
+        out.extend(band(
+            &lay(n + 1, row, theme::body()),
+            &widths,
+            &table.align,
+            index,
+        ));
     }
     out.push(border(&widths, '└', '┴', '┘', index));
     if marker {

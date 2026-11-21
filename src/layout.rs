@@ -140,9 +140,21 @@ pub struct Row {
     pub spans: Vec<RowSpan>,
     /// Set on the first row of a picture slot.
     pub slot: Option<Slot>,
+    /// Set on the lines of a code block whose highlighting is deferred: `spans`
+    /// are plain, [`Row::display_spans`] gives the highlighted ones.
+    pub lazy: Option<code::CodeLine>,
 }
 
 impl Row {
+    /// The spans to draw: `spans`, with the colours of code highlighting applied.
+    /// The text is the same; the first call for a code block highlights the whole block.
+    pub fn display_spans(&self) -> std::borrow::Cow<'_, [RowSpan]> {
+        match &self.lazy {
+            Some(line) => std::borrow::Cow::Owned(line.highlighted_spans(&self.spans)),
+            None => std::borrow::Cow::Borrowed(&self.spans),
+        }
+    }
+
     /// Concatenated text of the row.
     pub fn text(&self) -> String {
         self.spans.iter().map(|s| s.text.as_str()).collect()
@@ -154,6 +166,24 @@ pub struct Layout {
     pub state: State,
     pub rows: Vec<Row>,
     pub index: Index,
+}
+
+impl Layout {
+    /// Code blocks in the layout.
+    pub fn code_blocks(&self) -> usize {
+        self.code_lines().filter(|l| l.is_first()).count()
+    }
+
+    /// Code blocks highlighted so far.
+    pub fn highlighted_blocks(&self) -> usize {
+        self.code_lines()
+            .filter(|l| l.is_first() && l.is_highlighted())
+            .count()
+    }
+
+    fn code_lines(&self) -> impl Iterator<Item = &code::CodeLine> {
+        self.rows.iter().filter_map(|r| r.lazy.as_ref())
+    }
 }
 
 /// Lay `doc` out for a pane `width` columns wide; `cell` is the cell size in pixels.
@@ -336,6 +366,7 @@ fn slot_rows(
             block: index,
             spans: Vec::new(),
             slot: (i == 0).then(|| slot.clone()),
+            lazy: None,
         })
         .collect()
 }
@@ -372,6 +403,7 @@ fn diagram_rows(n: usize, src: &str, index: usize, content: usize, cx: &Ctx) -> 
                     kind: RowKind::Text,
                     block: index,
                     slot: None,
+                    lazy: None,
                     spans,
                 })
                 .collect();
@@ -400,6 +432,7 @@ fn diagram_rows(n: usize, src: &str, index: usize, content: usize, cx: &Ctx) -> 
                 kind: RowKind::Text,
                 block: index,
                 slot: None,
+                lazy: None,
                 spans: vec![plain(
                     "Text rendering not available for this diagram type",
                     theme::dim(),
@@ -455,6 +488,7 @@ fn placeholder_rows(hint: Option<(u32, u32)>, index: usize, content: usize, cx: 
                 kind: RowKind::Text,
                 block: index,
                 slot: None,
+                lazy: None,
                 spans,
             }
         })
@@ -473,6 +507,7 @@ fn note_row(label: &str, alt: &str, index: usize, content: usize) -> Row {
         block: index,
         spans: vec![plain(&text, theme::dim())],
         slot: None,
+        lazy: None,
     };
     clip(&mut row, content);
     row
@@ -498,6 +533,7 @@ fn paragraph_rows(inlines: &[Inline], index: usize, content: usize, cx: &Ctx) ->
                 block: index,
                 spans,
                 slot: None,
+                lazy: None,
             }));
         }
         run.clear();
@@ -549,6 +585,7 @@ fn footnotes(doc: &Document, content: usize, cx: &Ctx, rows: &mut Vec<Row>) {
         kind: RowKind::Rule,
         block: index,
         slot: None,
+        lazy: None,
         spans: vec![RowSpan {
             text: "─".repeat(content),
             style: theme::rule(),
@@ -569,6 +606,7 @@ fn blank(index: usize) -> Row {
         kind: RowKind::Blank,
         block: index,
         slot: None,
+        lazy: None,
         spans: Vec::new(),
     }
 }
@@ -615,6 +653,7 @@ fn hang_rows(mut rows: Vec<Row>, index: usize, marker: &str, hang: usize, max: u
             kind: RowKind::Text,
             block: index,
             slot: None,
+            lazy: None,
             spans: Vec::new(),
         });
     }
@@ -637,7 +676,16 @@ fn hang_rows(mut rows: Vec<Row>, index: usize, marker: &str, hang: usize, max: u
 }
 
 /// Cut a row that would exceed `max` columns (only possible in very deep nesting).
+/// Display width of `text`.
+fn width_of(text: &str) -> usize {
+    text.chars().map(|c| c.width().unwrap_or(0)).sum()
+}
+
 fn clip(row: &mut Row, max: usize) {
+    // Most rows already fit: leave them untouched.
+    if row.spans.iter().map(|s| width_of(&s.text)).sum::<usize>() <= max {
+        return;
+    }
     let mut used = 0;
     let mut keep = Vec::new();
     for mut span in std::mem::take(&mut row.spans) {
@@ -701,6 +749,7 @@ fn list_rows(list: &List, index: usize, content: usize, cx: &Ctx) -> Vec<Row> {
                     kind: RowKind::Text,
                     block: index,
                     slot: None,
+                    lazy: None,
                     spans: vec![lone],
                 },
             );
@@ -734,6 +783,7 @@ fn block_rows(block: &Block, index: usize, content: usize, cx: &Ctx) -> Vec<Row>
                 kind,
                 block: index,
                 slot: None,
+                lazy: None,
                 spans,
             })
             .collect()
@@ -742,6 +792,7 @@ fn block_rows(block: &Block, index: usize, content: usize, cx: &Ctx) -> Vec<Row>
         kind: RowKind::Rule,
         block: index,
         slot: None,
+        lazy: None,
         spans: vec![RowSpan {
             text: glyph.repeat(content),
             style: theme::rule(),

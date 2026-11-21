@@ -92,6 +92,11 @@ pub struct App {
     /// The search input is open and owns the keyboard.
     search_input: bool,
     quit: bool,
+    /// Frames drawn so far.
+    frames: usize,
+    /// The layout predates the real size (or a setting changed before it was known):
+    /// the first resize lays the document out.
+    layout_stale: bool,
 }
 
 impl App {
@@ -129,8 +134,11 @@ impl App {
             search: crate::search::Search::new(),
             search_input: false,
             quit: false,
+            frames: 0,
+            layout_stale: false,
         };
-        app.relayout();
+        // Laid out at the first resize, once the real size is known.
+        app.layout_stale = true;
         app
     }
 
@@ -145,6 +153,9 @@ impl App {
         self.sized = true;
         if self.size == (width, height) {
             if first {
+                if self.layout_stale {
+                    self.relayout();
+                }
                 self.request_pictures();
             }
             return;
@@ -162,7 +173,10 @@ impl App {
         if width_changed {
             self.jobs.next_generation();
         }
-        if width_changed || (height_changed && self.layout.rows.iter().any(|r| r.slot.is_some())) {
+        if width_changed
+            || self.layout_stale
+            || (height_changed && self.layout.rows.iter().any(|r| r.slot.is_some()))
+        {
             let anchor = self.top_anchor();
             let before = self.slot_sizes();
             self.relayout();
@@ -193,6 +207,21 @@ impl App {
             .filter(|s| s.known)
             .map(|s| (s.key.clone(), s.px))
             .collect()
+    }
+
+    /// Frames drawn so far.
+    pub fn frames_drawn(&self) -> usize {
+        self.frames
+    }
+
+    /// Code blocks in the document.
+    pub fn code_blocks_in_document(&self) -> usize {
+        self.layout.code_blocks()
+    }
+
+    /// Code blocks highlighted so far.
+    pub fn highlighted_code_blocks(&self) -> usize {
+        self.layout.highlighted_blocks()
     }
 
     /// Index of the first visible row.
@@ -303,6 +332,10 @@ impl App {
     }
 
     fn relayout_keeping_position(&mut self) {
+        if !self.sized {
+            self.layout_stale = true;
+            return;
+        }
         let anchor = self.top_anchor();
         self.relayout();
         self.scroll = anchor
@@ -403,6 +436,7 @@ impl App {
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
+        self.frames += 1;
         let area = frame.area();
         self.resize(area.width, area.height);
         if self.view.is_some() {
@@ -485,6 +519,7 @@ impl App {
     }
 
     fn relayout(&mut self) {
+        self.layout_stale = false;
         self.layout = layout::layout_diagrams(
             &self.doc,
             self.pane_width_of(self.size.0),
@@ -551,7 +586,7 @@ impl App {
                     let margin = " ".repeat(usize::from(MARGIN));
                     let mut spans = vec![Span::raw(margin)];
                     spans.extend(
-                        row.spans
+                        row.display_spans()
                             .iter()
                             .map(|s| Span::styled(s.text.clone(), s.style)),
                     );

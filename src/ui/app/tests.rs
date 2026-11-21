@@ -904,6 +904,7 @@ mod activate;
 mod focus;
 mod fullscreen;
 mod help;
+mod perf;
 mod reload;
 mod search;
 mod sidebar;

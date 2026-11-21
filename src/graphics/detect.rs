@@ -4,11 +4,12 @@
 //! without a terminal.
 
 use std::cell::RefCell;
+use std::time::Duration;
 
 use crate::cli::ProtocolChoice;
 use ratatui_image::{
     FontSize,
-    picker::{Picker, ProtocolType},
+    picker::{Picker, ProtocolType, cap_parser::QueryStdioOptions},
 };
 
 /// Cell size in pixels assumed when the terminal does not report one.
@@ -120,9 +121,19 @@ fn cell_from_window(columns: u16, rows: u16, width: u16, height: u16) -> Option<
 }
 
 /// Detector backed by ratatui-image's `Picker::from_query_stdio()`.
-#[derive(Default)]
 pub struct StdioDetector {
     picker: RefCell<Option<Picker>>,
+    /// How long to wait for the terminal's answer.
+    timeout: Duration,
+}
+
+impl StdioDetector {
+    pub fn new(timeout: Duration) -> Self {
+        Self {
+            picker: RefCell::new(None),
+            timeout,
+        }
+    }
 }
 
 impl Detector for StdioDetector {
@@ -136,7 +147,12 @@ impl Detector for StdioDetector {
     }
 
     fn detect(&self) -> Result<Detection, DetectError> {
-        let picker = Picker::from_query_stdio().map_err(|e| DetectError(e.to_string()))?;
+        let options = QueryStdioOptions {
+            timeout: self.timeout,
+            ..QueryStdioOptions::default()
+        };
+        let picker = Picker::from_query_stdio_with_options(options)
+            .map_err(|e| DetectError(e.to_string()))?;
         let font = picker.font_size();
         let (w, h) = (font.width, font.height);
         let found = Detection {

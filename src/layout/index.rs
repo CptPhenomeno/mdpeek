@@ -3,8 +3,6 @@
 
 use std::ops::Range;
 
-use std::collections::{BTreeMap, HashMap};
-
 use unicode_width::UnicodeWidthStr;
 
 use crate::doc::Document;
@@ -103,10 +101,11 @@ impl TextBlock {
 /// unit of each heading in laying-out order; the first ones are the document's
 /// own headings, in the order of `Document::heading_slugs`.
 pub(super) fn build(doc: &Document, rows: &[Row], heading_units: &[usize]) -> Index {
-    let mut blocks: BTreeMap<usize, TextBlock> = BTreeMap::new();
-    let mut heads: HashMap<usize, (usize, u8)> = HashMap::new();
+    // Units are numbered densely from 0 in laying-out order, so these are plain vectors.
+    let mut blocks: Vec<TextBlock> = Vec::new();
+    let mut heads: Vec<Option<(usize, u8)>> = Vec::new();
     // Link occurrence still open in each unit, as an index into `found`.
-    let mut open: HashMap<usize, usize> = HashMap::new();
+    let mut open: Vec<Option<usize>> = Vec::new();
     // (row, col, focusable), sorted by position at the end.
     let mut found: Vec<(usize, u16, Focusable)> = Vec::new();
     for (r, row) in rows.iter().enumerate() {
@@ -129,10 +128,15 @@ pub(super) fn build(doc: &Document, rows: &[Row], heading_units: &[usize]) -> In
         for span in &row.spans {
             let width = span.text.width().min(usize::from(u16::MAX)) as u16;
             if let Some(unit) = span.unit {
-                if let RowKind::Heading(level) = row.kind {
-                    heads.entry(unit).or_insert((r, level));
+                if unit >= blocks.len() {
+                    blocks.resize_with(unit + 1, TextBlock::default);
+                    heads.resize(unit + 1, None);
+                    open.resize(unit + 1, None);
                 }
-                let block = blocks.entry(unit).or_default();
+                if let RowKind::Heading(level) = row.kind {
+                    heads[unit].get_or_insert((r, level));
+                }
+                let block = &mut blocks[unit];
                 let new_row = block.parts.last().is_some_and(|p| p.row != r);
                 if new_row
                     && !block.text.ends_with(char::is_whitespace)
@@ -148,11 +152,9 @@ pub(super) fn build(doc: &Document, rows: &[Row], heading_units: &[usize]) -> In
                 });
                 block.text.push_str(&span.text);
                 match &span.link {
-                    None => {
-                        open.remove(&unit);
-                    }
+                    None => open[unit] = None,
                     Some(target) => {
-                        let reuse = open.get(&unit).copied().filter(|&i| {
+                        let reuse = open[unit].filter(|&i| {
                             matches!(&found[i].2, Focusable::Link { target: t, .. } if t == target)
                         });
                         let i = reuse.unwrap_or_else(|| {
@@ -164,7 +166,7 @@ pub(super) fn build(doc: &Document, rows: &[Row], heading_units: &[usize]) -> In
                                     fragments: Vec::new(),
                                 },
                             ));
-                            open.insert(unit, found.len() - 1);
+                            open[unit] = Some(found.len() - 1);
                             found.len() - 1
                         });
                         if let Focusable::Link { fragments, .. } = &mut found[i].2 {
@@ -190,10 +192,10 @@ pub(super) fn build(doc: &Document, rows: &[Row], heading_units: &[usize]) -> In
         .iter()
         .zip(slugs)
         .filter_map(|(unit, slug)| {
-            let &(row, level) = heads.get(unit)?;
+            let (row, level) = (*heads.get(*unit)?)?;
             Some(HeadingEntry {
                 level,
-                text: blocks.get(unit)?.text.clone(),
+                text: blocks.get(*unit)?.text.clone(),
                 slug,
                 row,
             })
@@ -203,7 +205,7 @@ pub(super) fn build(doc: &Document, rows: &[Row], heading_units: &[usize]) -> In
         headings,
         focusables: found.into_iter().map(|(_, _, f)| f).collect(),
         texts: blocks
-            .into_values()
+            .into_iter()
             .filter(|b| !b.text.trim().is_empty())
             .collect(),
     }

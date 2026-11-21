@@ -47,7 +47,8 @@ fn find<'a>(engine: &'a Engine, lang: &str) -> Option<&'a SyntaxReference> {
         .or_else(|| engine.syntaxes.find_syntax_by_extension(lang))
 }
 
-fn plain(code: &str) -> Vec<Vec<Piece>> {
+/// `code` split into lines, unstyled; loads nothing.
+pub fn plain(code: &str) -> Vec<Vec<Piece>> {
     code.lines()
         .map(|l| {
             vec![Piece {

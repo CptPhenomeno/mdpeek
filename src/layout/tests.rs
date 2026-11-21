@@ -652,19 +652,21 @@ fn line_longer_than_the_box_is_truncated_with_an_ellipsis_and_not_wrapped() {
 fn highlighted_span_colours_are_kept_inside_the_box() {
     let l = lay("```rust\nfn main() { let a = \"s\"; }\n```", 60);
     let rows = code_rows(&l);
-    let fgs: std::collections::HashSet<_> = rows[1]
-        .spans
+    // Highlighting is deferred: the laid-out spans are plain, the displayed ones coloured.
+    let plain: std::collections::HashSet<_> = rows[1].spans.iter().map(|s| s.style.fg).collect();
+    let shown = rows[1].display_spans();
+    let fgs: std::collections::HashSet<_> = shown
         .iter()
         .filter(|s| s.unit.is_some())
         .map(|s| s.style.fg)
         .collect();
+    assert!(plain.len() <= 3);
     assert!(fgs.len() > 1, "{fgs:?}");
-    assert!(
-        rows[1]
-            .spans
-            .iter()
-            .all(|s| s.style.bg == Some(theme::CODE_BG))
+    assert_eq!(
+        shown.iter().map(|s| s.text.as_str()).collect::<String>(),
+        rows[1].text()
     );
+    assert!(shown.iter().all(|s| s.style.bg == Some(theme::CODE_BG)));
     // unknown language: plain text in the body foreground
     let l = lay("```nonsense\nhello\n```", 40);
     let s = span(&l, "hello");
