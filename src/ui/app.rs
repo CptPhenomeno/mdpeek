@@ -18,6 +18,7 @@ use crate::theme;
 mod activate;
 mod focus;
 mod fullscreen;
+mod sidebar;
 #[cfg(test)]
 mod tests;
 
