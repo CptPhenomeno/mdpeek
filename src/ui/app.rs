@@ -39,6 +39,13 @@ const STATUS_ROWS: u16 = 1;
 /// Border columns / rows around the document, per axis.
 const BORDER: u16 = 2;
 
+/// An open overlay (popup) over the document pane: it owns the keyboard and
+/// blocks clicks. The help overlay (KB-57) adds its variant here.
+#[derive(Debug)]
+enum Overlay {
+    Toc(toc::Toc),
+}
+
 /// State of the viewer: document, layout and scroll.
 #[derive(Debug)]
 pub struct App {
@@ -58,8 +65,10 @@ pub struct App {
     jobs: Pictures,
     /// Cell size in pixels, as the terminal reports it.
     cell: (u16, u16),
-    /// Open overlays (popups): pictures leave them uncovered.
+    /// Rectangles of the overlays on screen: pictures leave them uncovered.
     overlays: Vec<Rect>,
+    /// The open overlay, if any.
+    overlay: Option<Overlay>,
     /// Diagrams are shown as text drawings (`d`, `--text-diagrams`).
     text_mode: bool,
     /// Focused link or diagram (SPEC §3.6.1).
@@ -106,6 +115,7 @@ impl App {
             jobs,
             cell: CELL,
             overlays: Vec::new(),
+            overlay: None,
             text_mode: false,
             focus: None,
             opener: Box::new(super::opener::Unavailable),
@@ -328,6 +338,11 @@ impl App {
             self.handle_view_key(key);
             return;
         }
+        if self.overlay_open() {
+            self.handle_overlay_key(key);
+            self.request_pictures();
+            return;
+        }
         if self.text_input_open() && self.search_input_key(key) {
             self.request_pictures();
             return;
@@ -354,6 +369,7 @@ impl App {
             Action::FocusNext => self.focus_step(true),
             Action::FocusPrev => self.focus_step(false),
             Action::Escape => self.escape(),
+            Action::OpenToc => self.open_toc(),
             Action::SearchOpen => self.open_search(),
             Action::SearchNext => self.search_step(true),
             Action::SearchPrev => self.search_step(false),
@@ -408,6 +424,7 @@ impl App {
         self.draw_pictures(inner, frame.buffer_mut());
         self.draw_search(inner, frame.buffer_mut());
         self.draw_focus(inner, frame.buffer_mut());
+        self.draw_overlay(frame);
         frame.render_widget(Paragraph::new(self.status_line(status.width)), status);
     }
 
@@ -418,6 +435,7 @@ impl App {
         }
         // A slot is at most one pane tall, so it starts within a pane height above.
         let height = usize::from(pane.height);
+        let overlays = [self.overlays.clone(), self.overlay_rects()].concat();
         let first = self.scroll.saturating_sub(height);
         let last = (self.scroll + height).min(self.layout.rows.len());
         for index in first..last {
@@ -437,7 +455,7 @@ impl App {
                 slot_left: pane.x.saturating_add(MARGIN).saturating_add(slot.left),
                 slot_cols: slot.cols,
                 slot_rows: slot.rows,
-                overlays: &self.overlays,
+                overlays: &overlays,
             };
             self.pictures.draw(slot, &request, buf);
         }

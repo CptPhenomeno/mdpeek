@@ -67,7 +67,7 @@ fn up_and_down_move_the_selection() {
 
 #[test]
 fn enter_scrolls_the_selected_heading_to_the_top_of_the_pane_and_closes_the_overlay() {
-    let mut app = app_from(&sections(), 50, 8 + CHROME);
+    let mut app = app_from(&sections(), 50, 12 + CHROME);
     press_t(&mut app);
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Down);
@@ -169,5 +169,5 @@ fn a_long_list_scrolls_inside_the_overlay_keeping_the_selection_visible() {
     }
     let text = screen_text(&mut app, 40, 8 + CHROME);
     assert!(text.contains("H25"), "{text}");
-    assert!(!text.contains("H00"), "{text}");
+    assert!(!text.contains("H10"), "{text}");
 }

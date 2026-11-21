@@ -45,9 +45,12 @@ impl App {
         self.scroll_match_into_view();
     }
 
-    /// Esc priority: the search input, then the search highlights, then the
-    /// focus. Overlays (KB-56, KB-57) go in front of this chain.
+    /// Esc priority: the open overlay, then the search input, the search
+    /// highlights and the focus.
     pub(super) fn escape(&mut self) {
+        if self.overlay.take().is_some() {
+            return;
+        }
         if self.search_input || self.search_active() {
             self.clear_search();
         } else {

@@ -154,6 +154,22 @@ const fn view(
     }
 }
 
+const fn toc(
+    code: KeyCode,
+    action: Action,
+    label: &'static str,
+    description: &'static str,
+) -> Binding {
+    Binding {
+        context: Context::Toc,
+        code,
+        modifiers: NONE,
+        action,
+        label,
+        description,
+    }
+}
+
 /// Document-focus bindings (SPEC §3.8); later keys and the F1 help extend this table.
 pub const BINDINGS: &[Binding] = &[
     bind(
@@ -263,6 +279,13 @@ pub const BINDINGS: &[Binding] = &[
         "Toggle text diagrams",
     ),
     global(
+        KeyCode::Char('t'),
+        NONE,
+        Action::OpenToc,
+        "t",
+        "Table of contents",
+    ),
+    global(
         KeyCode::Char('s'),
         NONE,
         Action::ToggleSidebar,
@@ -310,6 +333,36 @@ pub const BINDINGS: &[Binding] = &[
         "Select the first entry",
     ),
     side(KeyCode::End, NavKey::End, "End", "Select the last entry"),
+    toc(
+        KeyCode::Up,
+        Action::TocUp,
+        "Up",
+        "Select the previous heading",
+    ),
+    toc(
+        KeyCode::Down,
+        Action::TocDown,
+        "Down",
+        "Select the next heading",
+    ),
+    toc(
+        KeyCode::Enter,
+        Action::TocJump,
+        "Enter",
+        "Jump to the heading",
+    ),
+    toc(
+        KeyCode::Esc,
+        Action::CloseOverlay,
+        "Esc",
+        "Close the overlay",
+    ),
+    toc(
+        KeyCode::Char('q'),
+        Action::CloseOverlay,
+        "q",
+        "Close the overlay",
+    ),
     view(KeyCode::Char('+'), Action::ZoomIn, "+", "Zoom in"),
     view(KeyCode::Char('='), Action::ZoomIn, "=", "Zoom in"),
     view(KeyCode::Char('-'), Action::ZoomOut, "-", "Zoom out"),
@@ -346,6 +399,11 @@ pub const BINDINGS: &[Binding] = &[
 /// Action bound to `key` in the document (or globally), if any.
 pub fn action_for(key: KeyEvent) -> Option<Action> {
     action_in(Context::Document, key).or_else(|| action_in(Context::Global, key))
+}
+
+/// Action bound to `key` while the TOC overlay is open: nothing else applies.
+pub fn toc_action(key: KeyEvent) -> Option<Action> {
+    action_in(Context::Toc, key)
 }
 
 /// Action bound to `key` while the sidebar has focus (or globally), if any.
