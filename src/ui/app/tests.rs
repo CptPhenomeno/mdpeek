@@ -905,6 +905,7 @@ mod focus;
 mod fullscreen;
 mod search;
 mod sidebar;
+mod toc;
 
 #[test]
 fn no_binding_in_the_key_map_uses_a_function_key() {
