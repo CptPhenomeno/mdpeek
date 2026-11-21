@@ -39,6 +39,12 @@ pub enum Action {
     PanUp,
     PanDown,
     CloseFullscreen,
+    // Overlays (SPEC §3.10).
+    OpenToc,
+    TocUp,
+    TocDown,
+    TocJump,
+    CloseOverlay,
 }
 
 /// Where a binding applies.
@@ -50,6 +56,8 @@ pub enum Context {
     Fullscreen,
     /// The sidebar pane, while it has focus.
     Sidebar,
+    /// The table-of-contents overlay, while it is open.
+    Toc,
     /// Keys that work whichever pane has focus.
     Global,
 }

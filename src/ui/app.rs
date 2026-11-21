@@ -25,6 +25,7 @@ mod search;
 mod sidebar;
 #[cfg(test)]
 mod tests;
+mod toc;
 
 pub use super::opener::{Opener, SystemOpener};
 use super::pictures::{Clock, JobSink, Pictures};

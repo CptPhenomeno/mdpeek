@@ -51,7 +51,7 @@ pub(super) fn hit_test(
 impl App {
     /// Whether something covers the page, so clicks must not reach it. Add
     /// new overlays and inputs here.
-    fn clicks_blocked(&self) -> bool {
+    pub(super) fn clicks_blocked(&self) -> bool {
         self.view.is_some() || self.text_input_open()
     }
 
