@@ -61,13 +61,13 @@ readmd [OPTIONS] [PATH]
 
 ### 3.2 Screen layout
 
-- **Sidebar** (left, fixed width ~30 columns, hidden/shown with F2).
+- **Sidebar** (left, fixed width ~30 columns, hidden/shown with `s`).
 - **Document pane** (rest of the width): the rendered document, scrollable vertically.
 - **Status bar** (bottom row): file path relative to the root, scroll position (percentage), active mode (search, text diagrams), transient messages (e.g. "Opened in browser", "Local file links are not supported").
-- **Overlays** drawn over the document pane: help (F1), TOC (F4), search input (in the status bar).
+- **Overlays** drawn over the document pane: help (`?`), TOC (`t`), search input (in the status bar).
 - **Full-screen view** replaces everything except the status bar.
 
-The focused pane (sidebar or document) has a highlighted border. F6 moves focus between them when the sidebar is visible.
+The focused pane (sidebar or document) has a highlighted border. Ctrl+← moves focus to the sidebar and Ctrl+→ back to the document, when the sidebar is visible.
 
 ### 3.3 Markdown rendering
 
@@ -97,7 +97,7 @@ A `.mmd`/`.mermaid` file is a document made of a single diagram.
 2. The picture is centred horizontally in the document pane and occupies an image slot (§3.5 for slot rules).
 3. Rasterised pictures are cached in memory, keyed by (source hash, target pixel size), with least-recently-used eviction once the cache exceeds 256 MB of pixel data. Rendering happens off the UI thread; while a diagram renders, its slot shows a "Rendering diagram…" placeholder of the expected height (or 10 rows if unknown).
 4. **Parse or render error**: the block shows the diagram source as a code block, framed in red, with the error message from `merman` above it. The rest of the document is unaffected.
-5. **Diagram text mode** (F8 toggles, global): every diagram is shown as the ASCII/Unicode output of `merman` instead of an image. Only real drawings count as text output: flowchart, sequence, class and state. For every other type — including gantt and mindmap, for which `merman` returns only a raw outline dump, and pie, which it does not support — show the source as a code block with the note "Text rendering not available for this diagram type" (user decision after the KB-6 spike). The raw outline dump is never shown.
+5. **Diagram text mode** (`d` toggles, global): every diagram is shown as the ASCII/Unicode output of `merman` instead of an image. Only real drawings count as text output: flowchart, sequence, class and state. For every other type — including gantt and mindmap, for which `merman` returns only a raw outline dump, and pie, which it does not support — show the source as a code block with the note "Text rendering not available for this diagram type" (user decision after the KB-6 spike). The raw outline dump is never shown.
 6. On terminal resize, the layout is recomputed and diagrams are re-rasterised for the new width (debounced, ~150 ms).
 
 ### 3.5 Images and graphics
@@ -134,8 +134,8 @@ A `.mmd`/`.mermaid` file is a document made of a single diagram.
 1. Shows the root directory as a tree: directories and supported files only (`.md`, `.markdown`, `.mmd`, `.mermaid`, case-insensitive). Hidden entries (dot-prefixed) and paths ignored by `.gitignore` are skipped. Directories that contain no supported file at any depth are omitted.
 2. Sorting: directories first, then files, each alphabetical case-insensitive.
 3. Keys when the sidebar has focus: ↑/↓ move the selection; Enter on a file opens it (focus stays on the sidebar); Enter or → on a directory expands it, ← collapses it (or moves to the parent); Home/End go to first/last entry.
-4. The currently open file is marked. The tree is read at start-up; F5 also re-reads it (§3.8).
-5. F2 toggles visibility; hiding the sidebar while it has focus moves focus to the document.
+4. The currently open file is marked. The tree is read at start-up; `r` also re-reads it (§3.8).
+5. `s` toggles visibility; hiding the sidebar while it has focus moves focus to the document.
 
 ### 3.8 Keys (document focus)
 
@@ -149,25 +149,25 @@ A `.mmd`/`.mermaid` file is a document made of a single diagram.
 | Enter | Activate focused item |
 | Esc | Close overlay / clear search / clear focus, in that order |
 | Ctrl+F | Open the search input (§3.9) |
-| F3 / Shift+F3 | Next / previous search match |
-| F1 | Help overlay listing all keys |
-| F2 | Toggle sidebar |
-| F4 | TOC overlay (§3.10) |
-| F5 | Reload the current file and the sidebar tree from disk, keeping the scroll position when possible |
-| F6 | Switch focus between sidebar and document |
-| F8 | Toggle diagram text mode |
-| q | Quit (from document or sidebar focus). While the search input is open `q` is typed as text. In the TOC overlay, the help overlay and the full-screen diagram view `q` acts like Esc and does not quit. Ctrl+Q and F10 are not bound (user decision, KB-67). |
+| `n` / `N` | Next / previous search match |
+| `?` | Help overlay listing all keys |
+| `s` | Toggle sidebar |
+| `t` | TOC overlay (§3.10) |
+| `r` | Reload the current file and the sidebar tree from disk, keeping the scroll position when possible |
+| Ctrl+← / Ctrl+→ | Move focus to the sidebar / to the document (sidebar visible) |
+| `d` | Toggle diagram text mode |
+| q | Quit (from document or sidebar focus). While the search input is open `q` (like every letter key) is typed as text. In the TOC overlay, the help overlay and the full-screen diagram view `q` acts like Esc and does not quit. Ctrl+Q and F10 are not bound (user decision, KB-67). |
 
 ### 3.9 Search
 
 1. Ctrl+F opens a one-line input in the status bar. Search is incremental (updates while typing) and case-insensitive.
 2. Matches are searched in the logical text of each block (a whole paragraph, list item, heading, quote line, table cell or code line), not row by row, so a phrase split by word wrapping is still found; the match is then mapped back to the screen rows it spans, possibly as several fragments. Pictures are excluded. All matches are highlighted; the current match has a distinct colour and is scrolled into view.
-3. Enter closes the input keeping the highlights; F3 / Shift+F3 move to the next / previous match, wrapping around; the status bar shows `match i/n` or "No matches".
+3. Enter closes the input keeping the highlights; `n` / `N` move to the next / previous match, wrapping around; the status bar shows `match i/n` or "No matches".
 4. Esc closes the input and clears highlights.
 
 ### 3.10 Table of contents
 
-F4 opens an overlay listing all headings, indented by level (2 columns per level below H1). ↑/↓ select, Enter jumps to the heading (placed at the top of the pane) and closes the overlay, Esc closes it. The heading nearest above the current scroll position is pre-selected.
+`t` opens an overlay listing all headings, indented by level (2 columns per level below H1). ↑/↓ select, Enter jumps to the heading (placed at the top of the pane) and closes the overlay, Esc closes it. The heading nearest above the current scroll position is pre-selected.
 
 ### 3.11 Architecture (guidance)
 
@@ -211,10 +211,11 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
 20. **Full-screen zoom**: 100% means fit-to-screen; zooming keeps the viewport centre; only the visible region is rasterised, so ×8 does not allocate a whole giant bitmap.
 21. **During the resize debounce** slots show the rendering placeholder, not the stale picture.
 22. **Sidebar start state**: the root and the directories containing the open file are expanded; others are collapsed.
-23. **F5 on a deleted file**: status bar error, the old content stays on screen.
+23. **`r` on a deleted file**: status bar error, the old content stays on screen.
 24. **`.gitignore`** is honoured also when the folder is not inside a git repository.
 25. **Large documents**: laying out a 1 MB document takes under 100 ms in a release build.
 26. **merman unknowns** (text output per diagram type, dark theme selection, labels in `foreignObject` that resvg would drop) are verified by an early spike; any clash with §3.4 goes back to the user before dependent work starts.
+27. **No function keys** (user decision, 2026-11-21): F1–F12 conflict with other keymaps and laptop media rows, so no action uses them. Commands use plain letter keys (`?`, `s`, `t`, `r`, `d`, `n`/`N`, `q`), which are typed as text while the search input is open, or Ctrl combinations that the user's WezTerm and GNOME leave free (Ctrl+F, Ctrl+←/→). Ctrl+Shift+letter and Shift+Enter are avoided because legacy terminal encodings cannot tell them apart.
 
 ## 5. Quality bar
 
@@ -228,8 +229,8 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
   - `SAMPLE.md` at the repository root (with `sample-assets/`) is the benchmark document: it shows every element `readmd` must render, and `readmd SAMPLE.md` renders each of its sections as the document describes.
   - A `fixtures/` folder contains a showcase document, built from `SAMPLE.md`, with every element of §3.3, at least five Mermaid diagram types (flowchart, sequence, class, gantt, mindmap), one diagram with a syntax error, local PNG/SVG images, a missing image and a remote image.
   - `readmd fixtures/` in WezTerm (iTerm2 protocol, as detected) shows diagrams and images as sharp pictures, and scrolling never leaves picture fragments on screen.
-  - The same command with `--protocol halfblocks` shows all pictures with halfblocks; F8 shows diagrams as text.
-  - Every key in §3.6–§3.10 works as specified and is listed in the F1 help.
+  - The same command with `--protocol halfblocks` shows all pictures with halfblocks; `d` shows diagrams as text.
+  - Every key in §3.6–§3.10 works as specified and is listed in the `?` help.
   - Opening the showcase document takes under 300 ms to first paint (diagrams may still be rendering) on a modern laptop.
   - `readmd missing.md` exits with code 2 and a clear message.
 - Delivery (user request, modelled on the `kb` repository's GitHub workflows):
