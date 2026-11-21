@@ -1,3 +1,0 @@
-# kb board configuration (versioned with the project).
-prefix    = "KB"
-claim_ttl = "15m0s"

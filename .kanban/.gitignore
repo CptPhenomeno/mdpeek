@@ -1,6 +1,0 @@
-# The board database is local; config.toml is versioned.
-kb.db
-kb.db-wal
-kb.db-shm
-# The board export is local too.
-board.md

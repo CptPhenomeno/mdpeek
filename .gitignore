@@ -6,7 +6,5 @@
 *.swp
 *~
 .DS_Store
-.kanban/kb.db
-.kanban/kb.db-wal
-.kanban/kb.db-shm
+.kanban/
 dist
