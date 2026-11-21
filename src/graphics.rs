@@ -19,6 +19,7 @@ use std::collections::HashMap;
 
 pub mod detect;
 pub mod iterm2;
+pub mod query;
 use iterm2::{Iterm2Renderer, Iterm2Rows};
 
 /// The part of an image slot that intersects the document pane.

@@ -7,9 +7,13 @@ use std::cell::RefCell;
 use std::time::Duration;
 
 use crate::cli::ProtocolChoice;
+use crate::graphics::query;
 use ratatui_image::{
     FontSize,
-    picker::{Picker, ProtocolType, cap_parser::QueryStdioOptions},
+    picker::{
+        Picker, ProtocolType,
+        cap_parser::{Parser, QueryStdioOptions},
+    },
 };
 
 /// Cell size in pixels assumed when the terminal does not report one.
@@ -35,6 +39,10 @@ pub trait Detector {
     /// The picker built by the last successful detection, if the detector keeps one.
     fn take_picker(&self) -> Option<Picker> {
         None
+    }
+    /// Key presses read while detecting, which the app must still see.
+    fn take_leftover(&self) -> Vec<u8> {
+        Vec::new()
     }
 }
 
@@ -120,9 +128,17 @@ fn cell_from_window(columns: u16, rows: u16, width: u16, height: u16) -> Option<
     Some((width / columns, height / rows)).filter(|&(w, h)| w > 0 && h > 0)
 }
 
-/// Detector backed by ratatui-image's `Picker::from_query_stdio()`.
+/// How long late terminal reports are still discarded after a timeout.
+const GRACE: Duration = Duration::from_millis(100);
+
+/// Detector that sends ratatui-image's query itself and reads the answers with a
+/// deadline (see [`query`]), so no reader stays blocked on stdin afterwards.
+/// The protocol decision is ratatui-image's: Kitty and Sixel are not even asked
+/// on WezTerm and Konsole, and the picker's environment hints (tmux, iTerm2,
+/// WezTerm) apply when the terminal gave no protocol.
 pub struct StdioDetector {
     picker: RefCell<Option<Picker>>,
+    leftover: RefCell<Vec<u8>>,
     /// How long to wait for the terminal's answer.
     timeout: Duration,
 }
@@ -131,9 +147,41 @@ impl StdioDetector {
     pub fn new(timeout: Duration) -> Self {
         Self {
             picker: RefCell::new(None),
+            leftover: RefCell::new(Vec::new()),
             timeout,
         }
     }
+
+    /// Sends the query to the terminal.
+    fn send_query(is_tmux: bool) -> std::io::Result<()> {
+        use std::io::Write;
+        let mut options = QueryStdioOptions::default();
+        let set = |name: &str| std::env::var(name).is_ok_and(|s| !s.is_empty());
+        if set("WEZTERM_EXECUTABLE") || set("KONSOLE_VERSION") {
+            // iTerm2 is better than WezTerm's Sixel; Konsole's Sixel is buggy;
+            // neither implements Kitty's placeholders properly.
+            options.blacklist_protocols = vec![ProtocolType::Kitty, ProtocolType::Sixel];
+        }
+        let mut out = std::io::stdout();
+        out.write_all(Parser::query(is_tmux, options).as_bytes())?;
+        out.flush()
+    }
+}
+
+/// The picker for what the terminal reported (`None`: it did not answer).
+/// `from_fontsize` supplies the environment hints exactly as ratatui-image's own
+/// detection does; a protocol the terminal reported takes precedence over them.
+fn picker_from(answer: Option<query::Answer>, window_cell: Option<(u16, u16)>) -> Picker {
+    let cell = answer.and_then(|a| a.cell).or(window_cell);
+    let Some((w, h)) = cell else {
+        return Picker::halfblocks();
+    };
+    #[allow(deprecated)]
+    let mut picker = Picker::from_fontsize(FontSize::new(w, h));
+    if let Some(protocol) = answer.and_then(|a| a.protocol) {
+        picker.set_protocol_type(protocol);
+    }
+    picker
 }
 
 impl Detector for StdioDetector {
@@ -146,13 +194,16 @@ impl Detector for StdioDetector {
         self.picker.borrow_mut().take()
     }
 
+    fn take_leftover(&self) -> Vec<u8> {
+        std::mem::take(&mut self.leftover.borrow_mut())
+    }
+
     fn detect(&self) -> Result<Detection, DetectError> {
-        let options = QueryStdioOptions {
-            timeout: self.timeout,
-            ..QueryStdioOptions::default()
-        };
-        let picker = Picker::from_query_stdio_with_options(options)
-            .map_err(|e| DetectError(e.to_string()))?;
+        let is_tmux = Picker::halfblocks().tmux_detected();
+        Self::send_query(is_tmux).map_err(|e| DetectError(e.to_string()))?;
+        let outcome = query::read_answers(&mut query::StdinTty, self.timeout, GRACE);
+        *self.leftover.borrow_mut() = outcome.leftover;
+        let picker = picker_from(outcome.answer, self.cell_size());
         let font = picker.font_size();
         let (w, h) = (font.width, font.height);
         let found = Detection {

@@ -68,6 +68,27 @@ fn adopt(app: &mut App, selection: &Selection, detector: &dyn Detector) {
     app.set_message(format!("Graphics: {}", selection.label()));
 }
 
+/// Gives `app` the key presses that were typed while the terminal was queried.
+/// Only plain characters and Enter can be told apart from terminal replies there.
+fn replay_keys(app: &mut App, bytes: &[u8]) {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    for &b in bytes {
+        let key = match b {
+            b'\r' | b'\n' => KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            b' '..=b'~' => {
+                let mods = if b.is_ascii_uppercase() {
+                    KeyModifiers::SHIFT
+                } else {
+                    KeyModifiers::NONE
+                };
+                KeyEvent::new(KeyCode::Char(char::from(b)), mods)
+            }
+            _ => continue,
+        };
+        app.handle_key(key);
+    }
+}
+
 /// Run the viewer on `doc` until the user quits; `rel_path` is shown in the status bar.
 /// `text_diagrams` is `--text-diagrams`. `protocol` is the `--protocol` choice; the detected one is announced in the status bar.
 pub fn run(
@@ -116,6 +137,7 @@ pub fn run(
     first_frame_then_detect(&mut terminal, &mut app, |app| {
         if auto {
             adopt(app, &select(protocol, &detector), &detector);
+            replay_keys(app, &detector.take_leftover());
         }
     })?;
     let mut dirty = auto;
