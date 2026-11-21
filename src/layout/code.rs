@@ -5,13 +5,86 @@
 //! A tab expands to [`TAB`] spaces.
 
 use std::cell::Cell as Counter;
+use std::sync::{Arc, OnceLock};
 
 use ratatui::style::Style;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::{Row, RowKind, RowSpan, tag};
-use crate::highlight::highlight;
+use crate::highlight::{Piece, highlight, plain};
 use crate::theme;
+
+/// A code block whose highlighting waits until a row of it is drawn: layout needs
+/// only the line count (long lines are cut, not wrapped), and syntect costs far
+/// more than the rest of the layout together.
+#[derive(Debug)]
+struct LazyBlock {
+    lang: String,
+    text: String,
+    lines: OnceLock<Vec<Vec<Piece>>>,
+}
+
+impl PartialEq for LazyBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.lang == other.lang && self.text == other.text
+    }
+}
+
+impl Eq for LazyBlock {}
+
+/// One line of a [`LazyBlock`], on the row that shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeLine {
+    block: Arc<LazyBlock>,
+    line: usize,
+    /// Columns available to the code text.
+    inner: usize,
+}
+
+impl CodeLine {
+    pub(super) fn is_first(&self) -> bool {
+        self.line == 0
+    }
+
+    pub(super) fn is_highlighted(&self) -> bool {
+        self.block.lines.get().is_some()
+    }
+
+    /// `plain` (the row's spans as laid out) with the code text coloured.
+    pub(super) fn highlighted_spans(&self, plain_spans: &[RowSpan]) -> Vec<RowSpan> {
+        let block = &self.block;
+        let lines = block
+            .lines
+            .get_or_init(|| highlight(&block.text, Some(&block.lang)));
+        let Some(pieces) = lines.get(self.line) else {
+            return plain_spans.to_vec();
+        };
+        // The code text is what search indexes: the spans with a unit.
+        let Some(first) = plain_spans.iter().position(|s| s.unit.is_some()) else {
+            return plain_spans.to_vec();
+        };
+        let last = plain_spans
+            .iter()
+            .rposition(|s| s.unit.is_some())
+            .unwrap_or(first);
+        let unit = plain_spans[first].unit;
+        let pieces = expand(pieces.clone());
+        let mut out = plain_spans[..first].to_vec();
+        out.extend(truncate(pieces, self.inner).into_iter().map(|mut s| {
+            s.unit = unit;
+            s
+        }));
+        out.extend_from_slice(&plain_spans[last + 1..]);
+        out
+    }
+}
+
+/// Pieces with tabs expanded and the code style under them.
+fn expand(line: Vec<Piece>) -> Vec<(String, Style)> {
+    line.into_iter()
+        .map(|p| (p.text.replace('\t', TAB), theme::code().patch(p.style)))
+        .collect()
+}
 
 /// Spaces a tab expands to.
 const TAB: &str = "    ";
@@ -79,6 +152,7 @@ fn border(content: usize, left: char, right: char, label: Option<&str>, line: St
         block: 0,
         spans,
         slot: None,
+        lazy: None,
     }
 }
 
@@ -106,12 +180,15 @@ pub(super) fn framed(
     let lang = lang.filter(|l| !l.is_empty());
     let inner = content.saturating_sub(4).max(1);
     let mut out = vec![border(content, '┌', '┐', lang, frame)];
-    for line in highlight(text, lang) {
-        let pieces: Vec<(String, Style)> = line
-            .into_iter()
-            .map(|p| (p.text.replace('\t', TAB), theme::code().patch(p.style)))
-            .collect();
-        let mut spans = truncate(pieces, inner);
+    let lazy = lang.map(|l| {
+        Arc::new(LazyBlock {
+            lang: l.to_owned(),
+            text: text.to_owned(),
+            lines: OnceLock::new(),
+        })
+    });
+    for (n, line) in plain(text).into_iter().enumerate() {
+        let mut spans = truncate(expand(line), inner);
         let used: usize = spans.iter().map(|s| s.text.width()).sum();
         let mut lines = vec![std::mem::take(&mut spans)];
         tag(&mut lines, units);
@@ -127,6 +204,11 @@ pub(super) fn framed(
             block: 0,
             spans,
             slot: None,
+            lazy: lazy.as_ref().map(|block| CodeLine {
+                block: Arc::clone(block),
+                line: n,
+                inner,
+            }),
         });
     }
     out.push(border(content, '└', '┘', None, frame));

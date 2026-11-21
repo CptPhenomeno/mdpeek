@@ -570,7 +570,7 @@ impl App {
                     let margin = " ".repeat(usize::from(MARGIN));
                     let mut spans = vec![Span::raw(margin)];
                     spans.extend(
-                        row.spans
+                        row.display_spans()
                             .iter()
                             .map(|s| Span::styled(s.text.clone(), s.style)),
                     );
