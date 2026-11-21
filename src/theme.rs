@@ -35,6 +35,12 @@ pub const STRONG: Color = Color::Rgb(255, 255, 255);
 pub const EMPHASIS: Color = Color::Rgb(249, 226, 175);
 /// Background of inline code.
 pub const CODE_BG: Color = Color::Rgb(49, 50, 68);
+/// Background of a search match, with `MATCH_FG` text (contrast >= 4.5:1).
+pub const MATCH_BG: Color = Color::Rgb(137, 180, 250);
+pub const MATCH_FG: Color = BG;
+/// Background of the current search match: warmer and bolder than the others.
+pub const CURRENT_MATCH_BG: Color = Color::Rgb(250, 179, 135);
+pub const CURRENT_MATCH_FG: Color = BG;
 
 /// `#rrggbb` form of an RGB colour, for Mermaid theme variables.
 pub fn hex(c: Color) -> String {
@@ -266,6 +272,14 @@ mod error_colour_tests {
     fn contrast(a: Color, b: Color) -> f64 {
         let (x, y) = (luminance(a), luminance(b));
         (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    #[test]
+    fn match_highlights_keep_a_contrast_of_at_least_4_5() {
+        for (fg, bg) in [(MATCH_FG, MATCH_BG), (CURRENT_MATCH_FG, CURRENT_MATCH_BG)] {
+            assert!(contrast(fg, bg) >= 4.5, "{}", contrast(fg, bg));
+        }
+        assert_ne!(MATCH_BG, CURRENT_MATCH_BG);
     }
 
     #[test]

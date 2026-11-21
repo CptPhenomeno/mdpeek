@@ -16,9 +16,14 @@ pub enum Action {
     ToggleTextDiagrams,
     FocusNext,
     FocusPrev,
-    ClearFocus,
+    /// Esc: closes the search input, else clears the search, else the focus.
+    Escape,
     Activate,
     Quit,
+    // Search (SPEC §3.9).
+    SearchOpen,
+    SearchNext,
+    SearchPrev,
     // Sidebar (SPEC §3.2, §3.7).
     ToggleSidebar,
     FocusSidebar,
@@ -209,9 +214,9 @@ pub const BINDINGS: &[Binding] = &[
     bind(
         KeyCode::Esc,
         NONE,
-        Action::ClearFocus,
+        Action::Escape,
         "Esc",
-        "Clear the focus",
+        "Close the search input, clear the search, or clear the focus",
     ),
     bind(
         KeyCode::Enter,
@@ -221,6 +226,27 @@ pub const BINDINGS: &[Binding] = &[
         "Open the focused link or diagram",
     ),
     global(KeyCode::Char('q'), NONE, Action::Quit, "q", "Quit"),
+    global(
+        KeyCode::Char('f'),
+        KeyModifiers::CONTROL,
+        Action::SearchOpen,
+        "Ctrl+F",
+        "Open the search input",
+    ),
+    global(
+        KeyCode::Char('n'),
+        NONE,
+        Action::SearchNext,
+        "n",
+        "Next search match",
+    ),
+    global(
+        KeyCode::Char('N'),
+        KeyModifiers::SHIFT,
+        Action::SearchPrev,
+        "N",
+        "Previous search match",
+    ),
     global(
         KeyCode::Char('d'),
         NONE,

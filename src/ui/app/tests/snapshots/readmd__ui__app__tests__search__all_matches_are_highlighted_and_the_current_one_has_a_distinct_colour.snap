@@ -1,0 +1,15 @@
+---
+source: src/ui/app/tests/search.rs
+expression: terminal_snapshot(&mut app)
+---
+┌────────────────────────────────────────────────┐
+│ First notes here                               │
+│                                                │
+│ second paragraph                               │
+│                                                │
+│ Third NOTES line                               │
+│                                                │
+│                                                │
+│                                                │
+└────────────────────────────────────────────────┘
+ Search: notes_                  match 1/2 | 100%
