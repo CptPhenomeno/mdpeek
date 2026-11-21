@@ -373,6 +373,7 @@ impl App {
             Action::Escape => self.escape(),
             Action::OpenToc => self.open_toc(),
             Action::OpenHelp => self.open_help(),
+            Action::Reload => self.reload(),
             Action::SearchOpen => self.open_search(),
             Action::SearchNext => self.search_step(true),
             Action::SearchPrev => self.search_step(false),

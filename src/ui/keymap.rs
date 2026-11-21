@@ -42,6 +42,8 @@ pub enum Action {
     // Overlays (SPEC §3.10).
     OpenToc,
     OpenHelp,
+    /// Re-read the current file and the sidebar tree (SPEC §3.8).
+    Reload,
     TocUp,
     TocDown,
     TocJump,
@@ -346,6 +348,13 @@ pub const BINDINGS: &[Binding] = &[
         Action::OpenHelp,
         "?",
         "Help: list all keys",
+    ),
+    global(
+        KeyCode::Char('r'),
+        NONE,
+        Action::Reload,
+        "r",
+        "Reload the file and the sidebar tree",
     ),
     global(
         KeyCode::Char('s'),

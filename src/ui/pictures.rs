@@ -159,6 +159,46 @@ impl Pictures {
         *self = fresh;
     }
 
+    /// Starts over for the reloaded version of the same file. Diagrams whose
+    /// source is unchanged (same position) keep their size, state and raster
+    /// record, so they are not rendered again; everything else starts fresh.
+    /// The generation moves on, so late results of the old text are ignored.
+    /// Returns the keys whose pictures the picture set must drop.
+    pub fn reload_for(&mut self, doc: &Document) -> Vec<PictureKey> {
+        let mut fresh = Self::new(doc);
+        std::mem::swap(&mut fresh.sink, &mut self.sink);
+        std::mem::swap(&mut fresh.clock, &mut self.clock);
+        fresh.text_mode = self.text_mode;
+        fresh.generation = self.generation + 1;
+        let mut dropped: Vec<PictureKey> =
+            self.images.iter().cloned().map(PictureKey::Image).collect();
+        for (n, old) in self.diagram_sources.iter().enumerate() {
+            let key = PictureKey::Diagram(n);
+            let same = fresh.diagram_sources.get(n) == Some(old) && !self.stale.contains(&key);
+            if !same {
+                dropped.push(key);
+                continue;
+            }
+            if let Some(state) = self.states.get(&n) {
+                fresh.states.insert(n, state.clone());
+            }
+            if let Some(text) = self.texts.get(&n) {
+                fresh.texts.insert(n, text.clone());
+            }
+            if let Some(size) = self.naturals.get(&key) {
+                fresh.naturals.insert(key.clone(), *size);
+            }
+            if let Some(size) = self.rendered.get(&key) {
+                fresh.rendered.insert(key, *size);
+            }
+        }
+        if let Some(sink) = &fresh.sink {
+            sink.set_generation(fresh.generation);
+        }
+        *self = fresh;
+        dropped
+    }
+
     /// Switches diagram text mode; diagram jobs of the other mode are forgotten
     /// so the new mode submits its own (cached pictures are not rendered again).
     pub fn set_text_mode(&mut self, on: bool) {
