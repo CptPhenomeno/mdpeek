@@ -21,7 +21,7 @@ pub enum FocusId {
 
 impl App {
     /// Identity of every focusable, in document order.
-    fn focus_ids(&self) -> Vec<FocusId> {
+    pub(super) fn focus_ids(&self) -> Vec<FocusId> {
         let mut seen: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
         self.layout
             .index

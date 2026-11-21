@@ -175,6 +175,11 @@ impl Pictures {
         self.clock = clock;
     }
 
+    /// Current time of the injected clock.
+    pub fn now(&self) -> Duration {
+        self.clock.now()
+    }
+
     /// Whether the picture of `key` is outdated and must not be drawn.
     pub fn is_stale(&self, key: &PictureKey) -> bool {
         self.stale.contains(key)
