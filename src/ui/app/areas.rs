@@ -2,6 +2,11 @@
 
 use ratatui::layout::Rect;
 
+use super::{BORDER, STATUS_ROWS};
+
+/// Width of the sidebar pane, border included (SPEC §3.2).
+pub(super) const SIDEBAR_COLS: u16 = 30;
+
 /// The rectangles of the main view, in terminal cells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Areas {
@@ -17,8 +22,42 @@ pub struct Areas {
 
 /// Splits `terminal` into the sidebar, document and status areas.
 pub fn areas(terminal: Rect, sidebar_visible: bool) -> Areas {
-    let _ = (terminal, sidebar_visible);
-    Areas::default()
+    let body = Rect {
+        height: terminal.height.saturating_sub(STATUS_ROWS),
+        ..terminal
+    };
+    let status = Rect {
+        y: terminal.y + body.height,
+        height: terminal.height - body.height,
+        ..terminal
+    };
+    let cols = if sidebar_visible {
+        SIDEBAR_COLS.min(terminal.width / 2)
+    } else {
+        0
+    };
+    let sidebar = Rect {
+        width: cols,
+        ..body
+    };
+    let document = Rect {
+        x: body.x + cols,
+        width: body.width - cols,
+        ..body
+    };
+    let b = BORDER / 2;
+    let document_inner = Rect {
+        x: document.x + b,
+        y: document.y + b,
+        width: document.width.saturating_sub(BORDER),
+        height: document.height.saturating_sub(BORDER),
+    };
+    Areas {
+        sidebar,
+        document,
+        document_inner,
+        status,
+    }
 }
 
 #[cfg(test)]

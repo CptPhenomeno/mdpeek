@@ -17,7 +17,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use super::{App, STATUS_ROWS};
+use super::{App, Areas, areas};
 use crate::graphics::PictureRequest;
 use crate::layout::{DiagramState, DiagramStates, PictureKey, Slot};
 use crate::theme;
@@ -97,10 +97,10 @@ impl App {
 
     /// Area under the status bar, in pixels.
     fn view_screen_px(&self) -> (u32, u32) {
-        let rows = self.size.1.saturating_sub(STATUS_ROWS);
+        let pane = areas(self.terminal_rect(), false).document;
         (
-            u32::from(self.size.0) * u32::from(self.cell.0),
-            u32::from(rows) * u32::from(self.cell.1),
+            u32::from(pane.width) * u32::from(self.cell.0),
+            u32::from(pane.height) * u32::from(self.cell.1),
         )
     }
 
@@ -233,7 +233,7 @@ impl App {
     }
 
     fn view_text_max_scroll(&self) -> usize {
-        let rows = usize::from(self.size.1.saturating_sub(STATUS_ROWS));
+        let rows = usize::from(areas(self.terminal_rect(), false).document.height);
         self.view_text_lines().0.len().saturating_sub(rows)
     }
 
@@ -263,16 +263,11 @@ impl App {
 
     pub(super) fn render_view(&mut self, frame: &mut Frame) {
         let area = frame.area();
-        let rows = area.height.saturating_sub(STATUS_ROWS);
-        let pane = Rect {
-            height: rows,
-            ..area
-        };
-        let status = Rect {
-            y: area.y + rows,
-            height: area.height - rows,
-            ..area
-        };
+        let Areas {
+            document: pane,
+            status,
+            ..
+        } = areas(area, false);
         frame.render_widget(Block::new().style(theme::page()), area);
         self.draw_view_body(pane, frame);
         frame.render_widget(Paragraph::new(self.view_status(area.width)), status);
