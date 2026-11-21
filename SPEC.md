@@ -194,7 +194,7 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
 
 1. **Native Mermaid only.** Diagrams are rendered by `merman`; no Node.js/Chromium fallback. Small visual differences from mermaid.js are accepted.
 2. **Dark theme only, opaque.** One fixed dark theme; no detection. `readmd` paints an explicit RGB background on every cell of the screen (margins, borders, sidebar, status bar, overlays), so terminal transparency is never visible while reading. Headings, bold and italic are made distinct by colour and spacing as well as by font face, because many terminal fonts have no bold or italic (KB-68).
-3. **Non-UTF-8 files** are decoded lossily; the status bar shows "File is not valid UTF-8".
+3. **Non-UTF-8 files** are decoded lossily; the status bar shows "File is not valid UTF-8" for as long as that document is open (an indicator, not a transient message, listed before any message such as "Graphics: …" or "Reloaded").
 4. **Empty file** shows "Empty document" in the pane.
 5. **Very large documents** (≥ 1 MB): layout must stay responsive; diagrams and images are rasterised lazily, only when their slot is within one screen of the viewport.
 6. **Pane narrower than 20 columns**: show "Window too narrow" instead of the document.
