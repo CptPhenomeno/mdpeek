@@ -61,8 +61,11 @@ fn load_bundled(db: &mut usvg::fontdb::Database) {
 /// this, `sans-serif` (and usvg's last-resort serif) draw nothing on hosts
 /// lacking fontdb's default names.
 fn apply_generic_fallbacks(db: &mut usvg::fontdb::Database) {
+    apply_generic_fallbacks_to(db, "Liberation Sans");
+}
+
+fn apply_generic_fallbacks_to(db: &mut usvg::fontdb::Database, fallback: &str) {
     use usvg::fontdb::{Database, Family};
-    const FALLBACK: &str = "Liberation Sans";
     type Setter = fn(&mut Database, String);
     let generics: [(Family<'static>, Setter); 5] = [
         (Family::Serif, |d, n| d.set_serif_family(n)),
@@ -77,7 +80,7 @@ fn apply_generic_fallbacks(db: &mut usvg::fontdb::Database) {
             .faces()
             .any(|f| f.families.iter().any(|(n, _)| *n == name));
         if !present {
-            set(db, FALLBACK.to_string());
+            set(db, fallback.to_string());
         }
     }
 }
@@ -336,20 +339,12 @@ mod tests {
         use usvg::fontdb::Family;
         let mut db = usvg::fontdb::Database::new();
         load_bundled(&mut db);
-        // Liberation Sans is a face, so a family set to it must stay put.
+        // Serif points at a present face; monospace at one that does not exist.
         db.set_serif_family("Liberation Sans");
-        db.set_monospace_family("Liberation Sans");
-        apply_generic_fallbacks(&mut db);
+        db.set_monospace_family("No Such Font");
+        apply_generic_fallbacks_to(&mut db, "Fallback Probe");
         assert_eq!(db.family_name(&Family::Serif), "Liberation Sans");
-        // A custom, present family is not overwritten.
-        let mut db = usvg::fontdb::Database::new();
-        for face in crate::diagram::FONT_FACES {
-            db.load_font_data(face.to_vec());
-        }
-        let other = db.faces().next().unwrap().families[0].0.clone();
-        db.set_serif_family(other.clone());
-        apply_generic_fallbacks(&mut db);
-        assert_eq!(db.family_name(&Family::Serif), other);
+        assert_eq!(db.family_name(&Family::Monospace), "Fallback Probe");
     }
 
     #[test]
