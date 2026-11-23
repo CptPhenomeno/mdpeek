@@ -1,9 +1,9 @@
-# VERSION comes from Cargo.toml, so the file name always matches `readmd --version`.
+# VERSION comes from Cargo.toml, so the file name always matches `mdpeek --version`.
 VERSION := $(shell sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -n 1)
 DIST    := dist
 OS      := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 ARCH    := $(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-OUT     := $(DIST)/readmd-$(VERSION)-$(OS)-$(ARCH)
+OUT     := $(DIST)/mdpeek-$(VERSION)-$(OS)-$(ARCH)
 
 .PHONY: check dist dist-name clean
 
@@ -16,7 +16,7 @@ check:
 dist:
 	cargo build --release --locked
 	mkdir -p $(DIST)
-	cp target/release/readmd $(OUT)
+	cp target/release/mdpeek $(OUT)
 
 ## dist-name: print the file name that dist produces
 dist-name:
@@ -24,4 +24,4 @@ dist-name:
 
 ## clean: remove the release binaries
 clean:
-	rm -f $(DIST)/readmd-*
+	rm -f $(DIST)/mdpeek-*

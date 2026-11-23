@@ -25,9 +25,9 @@ pub enum ProtocolChoice {
     Halfblocks,
 }
 
-/// Raw command-line arguments of `readmd`.
+/// Raw command-line arguments of `mdpeek`.
 #[derive(Debug, Parser)]
-#[command(name = "readmd", version, about = "Terminal Markdown reader")]
+#[command(name = "mdpeek", version, about = "Terminal Markdown reader")]
 pub struct Args {
     /// File (.md, .markdown, .mmd, .mermaid) or directory; defaults to the current directory.
     pub path: Option<PathBuf>,
@@ -132,7 +132,7 @@ mod tests {
     use super::*;
 
     fn config<const N: usize>(argv: [&str; N]) -> Result<Config, CliError> {
-        Args::try_parse_from(std::iter::once("readmd").chain(argv))
+        Args::try_parse_from(std::iter::once("mdpeek").chain(argv))
             .expect("valid arguments")
             .into_config()
     }
@@ -160,7 +160,7 @@ mod tests {
         ] {
             assert_eq!(config(["--protocol", s]).unwrap().protocol, p);
         }
-        assert!(Args::try_parse_from(["readmd", "--protocol", "bogus"]).is_err());
+        assert!(Args::try_parse_from(["mdpeek", "--protocol", "bogus"]).is_err());
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
 
-use readmd::ui::keymap::{BINDINGS, Context};
+use mdpeek::ui::keymap::{BINDINGS, Context};
 
 const README: &str = include_str!("../README.md");
 

@@ -15,12 +15,12 @@ fn first_q_quits_when_the_terminal_never_answers() {
             "30",
             "python3",
             script,
-            env!("CARGO_BIN_EXE_readmd"),
+            env!("CARGO_BIN_EXE_mdpeek"),
             sample,
         ])
         .status();
     match status {
-        Ok(s) => assert!(s.success(), "readmd did not quit after the first q: {s}"),
+        Ok(s) => assert!(s.success(), "mdpeek did not quit after the first q: {s}"),
         Err(e) => eprintln!("skipped: {e}"),
     }
 }

@@ -62,7 +62,7 @@ fn dist_names_the_binary_for_the_host() {
     };
     assert_eq!(
         name.trim(),
-        format!("dist/readmd-{}-{os}-{arch}", env!("CARGO_PKG_VERSION"))
+        format!("dist/mdpeek-{}-{os}-{arch}", env!("CARGO_PKG_VERSION"))
     );
     let dry = Command::new("make")
         .args(["-n", "dist"])
@@ -192,4 +192,11 @@ fn pyyaml_validates_both_workflows() {
     } else {
         eprintln!("PyYAML not available: skipped");
     }
+}
+
+#[test]
+fn deploy_workflow_names_artifacts_mdpeek() {
+    let deploy = std::fs::read_to_string(root().join(".github/workflows/deploy.yml")).unwrap();
+    assert!(deploy.contains("name: mdpeek-${{ matrix.os }}-${{ matrix.arch }}"));
+    assert!(deploy.contains("dist/mdpeek-*"));
 }

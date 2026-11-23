@@ -2,7 +2,7 @@
 
 use std::io;
 
-/// The three terminal states `readmd` changes and must always undo.
+/// The three terminal states `mdpeek` changes and must always undo.
 pub trait TerminalOps {
     fn disable_mouse_capture(&mut self) -> io::Result<()>;
     fn disable_raw_mode(&mut self) -> io::Result<()>;

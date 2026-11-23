@@ -1760,6 +1760,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdpeek"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "base64 0.22.1",
+ "clap",
+ "crossterm",
+ "ignore",
+ "image",
+ "insta",
+ "merman",
+ "open",
+ "pulldown-cmark",
+ "ratatui",
+ "ratatui-image",
+ "resvg",
+ "rustix 1.1.6",
+ "serde_json",
+ "syntect",
+ "tempfile",
+ "unicode-width",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3007,30 +3031,6 @@ dependencies = [
  "once_cell",
  "smallvec",
  "yoke",
-]
-
-[[package]]
-name = "readmd"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "base64 0.22.1",
- "clap",
- "crossterm",
- "ignore",
- "image",
- "insta",
- "merman",
- "open",
- "pulldown-cmark",
- "ratatui",
- "ratatui-image",
- "resvg",
- "rustix 1.1.6",
- "serde_json",
- "syntect",
- "tempfile",
- "unicode-width",
 ]
 
 [[package]]

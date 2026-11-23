@@ -24,7 +24,7 @@ const FLOWCHART: &str = "flowchart TD
 ";
 const SEQUENCE: &str = "sequenceDiagram
     participant U as User
-    participant R as readmd
+    participant R as mdpeek
     participant M as merman
     U->>R: open SAMPLE.md
     R->>M: render(diagram source)
@@ -56,7 +56,7 @@ const GANTT: &str = "gantt
     Images           :         b2, after b1, 3d
 ";
 const MINDMAP: &str = "mindmap
-  root((readmd))
+  root((mdpeek))
     Reading
       Markdown
       Code
@@ -143,7 +143,7 @@ fn text_of(src: &str) -> Result<String, RenderError> {
 /// Rasterise at `width` px (natural size scaled to fit); returns (w, h, rgba, intrinsic).
 fn rasterise(svg: &str, width: u32) -> (u32, u32, Vec<u8>, (f32, f32)) {
     let opt = resvg::usvg::Options {
-        fontdb: readmd::raster::fontdb(),
+        fontdb: mdpeek::raster::fontdb(),
         ..Default::default()
     };
     let tree = resvg::usvg::Tree::from_str(svg, &opt).expect("parse svg");

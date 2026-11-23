@@ -1,4 +1,4 @@
-//! readmd: a terminal Markdown reader.
+//! mdpeek: a terminal Markdown reader.
 
 pub mod cli;
 pub mod diagram;

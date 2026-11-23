@@ -22,7 +22,7 @@ use merman::{
 /// Outcome of rendering a diagram source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Rendered {
-    /// SVG document, Mermaid base theme with the readmd palette, transparent background, `<text>` labels.
+    /// SVG document, Mermaid base theme with the mdpeek palette, transparent background, `<text>` labels.
     Svg(String),
     /// Unicode drawing (flowchart, sequence, class, state only).
     Text(String),

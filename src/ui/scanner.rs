@@ -28,6 +28,9 @@ impl ScanSink for InlineScanner {
     }
 }
 
+/// Name of the scanner thread.
+const THREAD_NAME: &str = "mdpeek-scan";
+
 /// Scans on a short-lived thread and sends the result down a channel that the
 /// event loop polls.
 #[derive(Debug)]
@@ -38,7 +41,7 @@ impl ScanSink for ThreadScanner {
         let tx = self.0.clone();
         let root: PathBuf = root.to_path_buf();
         let spawned = std::thread::Builder::new()
-            .name("readmd-scan".into())
+            .name(THREAD_NAME.into())
             .spawn(move || {
                 // The receiver is gone only when the viewer quit.
                 let _ = tx.send(tree::scan(&root));
@@ -47,5 +50,22 @@ impl ScanSink for ThreadScanner {
             Ok(_) => None,
             Err(err) => Some(Err(err)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scanner_thread_is_named_mdpeek_scan() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let name = std::thread::Builder::new()
+            .name(THREAD_NAME.into())
+            .spawn(move || {
+                let _ = tx.send(std::thread::current().name().map(str::to_owned));
+            })
+            .map(|_| rx.recv().ok().flatten());
+        assert_eq!(name.ok().flatten().as_deref(), Some("mdpeek-scan"));
     }
 }

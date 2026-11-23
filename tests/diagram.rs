@@ -1,6 +1,6 @@
 //! Tests for the merman wrapper (KB-28, SPEC §3.4, §4.7).
 
-use readmd::diagram::{Rendered, contain, render_svg, render_text, source_hash};
+use mdpeek::diagram::{Rendered, contain, render_svg, render_text, source_hash};
 
 const FLOWCHART: &str = "flowchart TD\n    A[Open] --> B{Ok?}\n    B -- yes --> C[Render]\n";
 const STATE: &str = "stateDiagram-v2\n    [*] --> Reading\n    Reading --> [*]\n";
@@ -9,16 +9,16 @@ const PIE: &str = "pie title T\n    \"A\" : 15\n    \"B\" : 85\n";
 const MINDMAP: &str = "mindmap\n  root((r))\n    a\n    b\n";
 
 #[test]
-fn valid_flowchart_returns_svg_with_the_readmd_theme_and_a_transparent_background() {
+fn valid_flowchart_returns_svg_with_the_mdpeek_theme_and_a_transparent_background() {
     let Rendered::Svg(svg) = render_svg(FLOWCHART) else {
         panic!("expected svg");
     };
     assert!(svg.trim_start().starts_with("<svg"));
     assert!(!svg.contains("<foreignObject"), "labels must be resvg-safe");
-    // readmd palette, not Mermaid's dark theme.
+    // mdpeek palette, not Mermaid's dark theme.
     assert!(
-        svg.contains(&readmd::theme::hex(readmd::theme::primary_fill())),
-        "readmd theme colours missing"
+        svg.contains(&mdpeek::theme::hex(mdpeek::theme::primary_fill())),
+        "mdpeek theme colours missing"
     );
     assert!(!svg.contains("#1f2020"), "dark theme colours present");
     assert!(!svg.contains("#22D3EE"), "default theme colours present");
@@ -101,9 +101,9 @@ fn source_hash_is_stable_for_identical_sources_and_differs_for_different_ones() 
 }
 
 #[test]
-fn site_config_sets_the_base_theme_with_variables_from_the_readmd_theme() {
-    use readmd::diagram::site_config;
-    use readmd::theme::{ACCENT, FG, LINK, hex};
+fn site_config_sets_the_base_theme_with_variables_from_the_mdpeek_theme() {
+    use mdpeek::diagram::site_config;
+    use mdpeek::theme::{ACCENT, FG, LINK, hex};
     let cfg = site_config();
     assert_eq!(cfg["theme"], "base");
     let v = &cfg["themeVariables"];
@@ -120,7 +120,7 @@ fn site_config_sets_the_base_theme_with_variables_from_the_readmd_theme() {
     );
     assert_ne!(
         v["edgeLabelBackground"],
-        hex(readmd::theme::EMPHASIS),
+        hex(mdpeek::theme::EMPHASIS),
         "edge label background must be a pastel"
     );
     assert_eq!(v["textColor"], hex(FG));
@@ -149,7 +149,7 @@ fn edge_label_backgrounds_are_opaque_in_the_svg() {
     let Rendered::Svg(svg) = render_svg("flowchart LR\n    A -->|yes| B\n") else {
         panic!("no svg");
     };
-    let bg = readmd::theme::hex(readmd::theme::pastel(readmd::theme::EMPHASIS));
+    let bg = mdpeek::theme::hex(mdpeek::theme::pastel(mdpeek::theme::EMPHASIS));
     assert!(svg.contains(&bg), "edge label background {bg} not in SVG");
     assert!(
         !svg.contains(".edgeLabel rect{opacity:0.5"),
@@ -161,19 +161,19 @@ fn edge_label_backgrounds_are_opaque_in_the_svg() {
 
 const SAMPLES: [&str; 7] = [
     "flowchart TD\n    A[Open] --> B{Has?}\n    B -- yes --> C[Render]\n    B -- no --> D[Plain]\n",
-    "sequenceDiagram\n    participant U as User\n    participant R as readmd\n    U->>R: open\n    Note over U,R: note\n",
+    "sequenceDiagram\n    participant U as User\n    participant R as mdpeek\n    U->>R: open\n    Note over U,R: note\n",
     "classDiagram\n    class Document {\n        +Vec~Block~ blocks\n    }\n    class Block\n    Document \"1\" --> \"*\" Block\n",
     "gantt\n    title Plan\n    dateFormat  YYYY-MM-DD\n    section Core\n    Model :done, a1, 2026-11-19, 2d\n    Layout :active, a2, after a1, 3d\n    section Pictures\n    Diagrams : b1, after a2, 4d\n",
-    "mindmap\n  root((readmd))\n    Reading\n      Markdown\n    Pictures\n      Mermaid\n    Navigation\n",
+    "mindmap\n  root((mdpeek))\n    Reading\n      Markdown\n    Pictures\n      Mermaid\n    Navigation\n",
     "stateDiagram-v2\n    [*] --> Reading\n    Reading --> Searching: Ctrl+F\n    Reading --> [*]\n",
     "pie title Time\n    \"Parsing\" : 15\n    \"Layout\" : 25\n    \"Diagrams\" : 45\n",
 ];
 
 #[test]
-fn all_sample_diagram_types_render_with_the_readmd_palette() {
-    let scale: Vec<String> = readmd::theme::diagram_scale()
+fn all_sample_diagram_types_render_with_the_mdpeek_palette() {
+    let scale: Vec<String> = mdpeek::theme::diagram_scale()
         .into_iter()
-        .map(readmd::theme::hex)
+        .map(mdpeek::theme::hex)
         .collect();
     for src in SAMPLES {
         let Rendered::Svg(svg) = render_svg(src) else {
@@ -182,7 +182,7 @@ fn all_sample_diagram_types_render_with_the_readmd_palette() {
         assert!(svg.contains("<svg"), "{src}");
         assert!(
             scale.iter().any(|c| svg.to_lowercase().contains(c)),
-            "no readmd colour in SVG of {src}"
+            "no mdpeek colour in SVG of {src}"
         );
     }
 }
@@ -192,7 +192,7 @@ fn class_cardinality_labels_are_not_drawn_in_the_page_background_colour() {
     let Rendered::Svg(svg) = render_svg(SAMPLES[2]) else {
         panic!("no svg");
     };
-    let bg = readmd::theme::hex(readmd::theme::BG);
+    let bg = mdpeek::theme::hex(mdpeek::theme::BG);
     let terminals: Vec<&str> = svg
         .split("<text ")
         .skip(1)
@@ -217,6 +217,6 @@ fn gantt_grid_lines_use_the_line_colour_not_black() {
         panic!("no svg");
     };
     assert!(!svg.contains("<line stroke=\"currentColor\""));
-    let line = readmd::theme::hex(readmd::theme::LINE);
+    let line = mdpeek::theme::hex(mdpeek::theme::LINE);
     assert!(svg.contains(&format!("<line stroke=\"{line}\"")));
 }

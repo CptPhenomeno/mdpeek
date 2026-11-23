@@ -2,15 +2,15 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser;
-use readmd::cli::Args;
-use readmd::doc::Document;
-use readmd::{tree, ui};
+use mdpeek::cli::Args;
+use mdpeek::doc::Document;
+use mdpeek::{tree, ui};
 
 fn main() -> ExitCode {
     let config = match Args::parse().into_config() {
         Ok(config) => config,
         Err(err) => {
-            eprintln!("readmd: {err}");
+            eprintln!("mdpeek: {err}");
             return err.exit_code();
         }
     };
@@ -20,7 +20,7 @@ fn main() -> ExitCode {
         Some(path) => match Document::from_path(path) {
             Ok(doc) => (doc, relative_to_root(path, &start.root)),
             Err(err) => {
-                eprintln!("readmd: {}: {err}", path.display());
+                eprintln!("mdpeek: {}: {err}", path.display());
                 return ExitCode::FAILURE;
             }
         },
@@ -35,7 +35,7 @@ fn main() -> ExitCode {
     match ui::run(doc, rel_path, start, config.protocol, config.text_diagrams) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("readmd: {err}");
+            eprintln!("mdpeek: {err}");
             ExitCode::FAILURE
         }
     }
