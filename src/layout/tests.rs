@@ -167,6 +167,119 @@ fn table_is_drawn_with_box_drawing_borders_and_a_bold_header_row() {
     assert!(!span(&l, "1").style.add_modifier.contains(Modifier::BOLD));
 }
 
+const SEP: &str = "├───┼───┤";
+
+#[test]
+fn table_with_two_body_rows_renders_a_separator_between_them() {
+    let l = lay("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |", 40);
+    assert_eq!(
+        texts(&l),
+        [
+            "┌───┬───┐",
+            "│ a │ b │",
+            SEP,
+            "│ 1 │ 2 │",
+            SEP,
+            "│ 3 │ 4 │",
+            "└───┴───┘"
+        ]
+    );
+}
+
+#[test]
+fn body_row_wrapping_to_three_lines_is_followed_by_exactly_one_separator() {
+    let l = lay(
+        "| aaaa bbbb cccc | d |\n|---|---|\n| x | y |\n| z | w |",
+        20,
+    );
+    let t = texts(&l);
+    assert_eq!(t.iter().filter(|r| r.starts_with('├')).count(), 2);
+    assert_eq!(&t[1..3], ["│ aaaa bbbb  │ d │", "│ cccc       │   │"]);
+    assert!(t[3].starts_with('├'));
+    assert!(t[4].starts_with("│ x"));
+    assert!(t[5].starts_with('├'));
+    assert!(t[6].starts_with("│ z"));
+    let wrapped = lay(
+        "| h |\n|---|\n| aaa bbb ccc ddd eee fff ggg hhh |\n| z |",
+        20,
+    );
+    let t = texts(&wrapped);
+    let first = t
+        .iter()
+        .position(|r| r.contains("aaa"))
+        .unwrap_or_else(|| panic!("{t:?}"));
+    let z = t
+        .iter()
+        .position(|r| r.contains('z'))
+        .unwrap_or_else(|| panic!("{t:?}"));
+    assert!(z - first >= 3, "{t:?}");
+    assert_eq!(t[first..z].iter().filter(|r| r.starts_with('├')).count(), 1);
+    assert!(t[z - 1].starts_with('├'));
+}
+
+#[test]
+fn table_with_a_single_body_row_has_no_separator_besides_the_header_rule() {
+    let t = texts(&lay("| a | b |\n|---|---|\n| 1 | 2 |", 40));
+    assert_eq!(t.iter().filter(|r| r.starts_with('├')).count(), 1);
+    assert_eq!(t.len(), 5);
+}
+
+#[test]
+fn table_with_no_body_rows_renders_only_borders_and_header() {
+    let t = texts(&lay("| a | b |\n|---|---|", 40));
+    assert_eq!(t, ["┌───┬───┐", "│ a │ b │", SEP, "└───┴───┘"]);
+}
+
+#[test]
+fn separator_rows_use_the_rule_style_table_kind_and_block_index() {
+    let l = lay("para\n\n| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |", 40);
+    let seps: Vec<&Row> = l.rows.iter().filter(|r| r.text() == SEP).collect();
+    assert_eq!(seps.len(), 2);
+    let block = seps[0].block;
+    assert!(block > 0);
+    for r in seps {
+        assert_eq!(r.kind, RowKind::Table);
+        assert_eq!(r.block, block);
+        assert_eq!(r.spans.len(), 1);
+        assert_eq!(r.spans[0].style, crate::theme::rule());
+    }
+}
+
+#[test]
+fn truncated_table_ends_every_separator_row_with_the_marker_within_width() {
+    let md = "| a | b | c | d | e | f | g | h |\n|---|---|---|---|---|---|---|---|\n| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |\n| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |\n| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |";
+    let l = lay(md, 20);
+    let seps: Vec<String> = texts(&l)
+        .into_iter()
+        .filter(|r| r.starts_with('├'))
+        .collect();
+    assert_eq!(seps.len(), 3);
+    for s in &seps {
+        assert!(s.ends_with('…'), "{s:?}");
+    }
+    for row in &l.rows {
+        assert!(row.text().width() <= 18, "{:?}", row.text());
+    }
+}
+
+#[test]
+fn separator_rows_have_no_unit_or_link_and_search_matches_are_unchanged() {
+    let l = lay("| a | b |\n|---|---|\n| x | y |\n| x | y |\n| x | y |", 40);
+    for r in l.rows.iter().filter(|r| r.text() == SEP) {
+        assert!(r.spans.iter().all(|s| s.unit.is_none() && s.link.is_none()));
+    }
+    let mut search = crate::search::Search::new();
+    search.set_query(&l, "x");
+    assert_eq!(search.matches().len(), 3);
+    for m in search.matches() {
+        for f in &m.fragments {
+            assert!(!l.rows[f.row].text().starts_with('├'));
+        }
+    }
+    search.set_query(&l, "─");
+    assert_eq!(search.matches().len(), 0);
+}
+
 #[test]
 fn table_cells_follow_left_center_and_right_alignment_from_the_delimiter_row() {
     let t = table_text(
@@ -174,7 +287,7 @@ fn table_cells_follow_left_center_and_right_alignment_from_the_delimiter_row() {
         60,
     );
     assert_eq!(t[1], "│ l    │  c   │    r │");
-    assert_eq!(t[4], "│ x    │  y   │    z │");
+    assert_eq!(t[5], "│ x    │  y   │    z │");
 }
 
 #[test]
