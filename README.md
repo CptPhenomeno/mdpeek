@@ -6,17 +6,45 @@ syntax-highlighted code, and draws local images and Mermaid diagrams as real
 pictures through the terminal's graphics protocol. Diagrams are rendered
 natively (`merman` and `resvg`): no Node.js, no Chromium, no network.
 
-## Build and install
+## Install
 
-`mdpeek` is not published on crates.io (the name is taken), so build it from
-source. It needs Rust 1.95 or newer (edition 2024).
+Every release on GitHub ships prebuilt binaries for Linux and macOS (amd64 and
+arm64), named `mdpeek-<version>-<os>-<arch>`, with a `checksums.txt`.
+
+### With mise
 
 ```sh
-git clone <repository-url> mdpeek && cd mdpeek
-cargo install --path .     # installs `mdpeek` into ~/.cargo/bin
+mise use -g github:CptPhenomeno/mdpeek
 ```
 
-Other targets:
+mise downloads the binary that matches your platform from the latest GitHub
+release. Pin a version with `github:CptPhenomeno/mdpeek@0.1.0`.
+
+### By hand
+
+Download the binary for your platform from the
+[releases page](https://github.com/CptPhenomeno/mdpeek/releases), check it
+against `checksums.txt`, make it executable and put it on your `PATH`.
+
+### From source
+
+`mdpeek` is not published on crates.io. Building it needs Rust 1.95 or newer
+(edition 2024).
+
+```sh
+cargo install --locked --git https://github.com/CptPhenomeno/mdpeek
+```
+
+Or from a clone:
+
+```sh
+git clone https://github.com/CptPhenomeno/mdpeek && cd mdpeek
+cargo install --locked --path .   # installs `mdpeek` into ~/.cargo/bin
+```
+
+## Build
+
+Development targets:
 
 ```sh
 make check   # cargo fmt --check, clippy -D warnings, cargo test
@@ -207,3 +235,11 @@ cannot change it.
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT), at your option.
+
+The bundled Liberation Sans fonts (`assets/fonts/`) are under the SIL Open
+Font License; see [assets/fonts/LICENSE.txt](assets/fonts/LICENSE.txt).

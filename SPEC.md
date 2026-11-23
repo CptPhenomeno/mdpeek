@@ -20,7 +20,7 @@
 - Editing files.
 - Guaranteed support inside tmux/screen (best effort only).
 - Windows and macOS as targets (they may work, they are not tested).
-- Publishing to crates.io (`publish = false`; the name `mdpeek` is free there, publishing is a later decision).
+- Publishing to crates.io (`publish = false`; the name `mdpeek` is free there, publishing is a later decision). Distribution is through GitHub releases, installable with `mise use -g github:CptPhenomeno/mdpeek` (user decision, 2026-11-23).
 
 ## 2. Glossary
 
@@ -221,6 +221,7 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
 27. **No function keys** (user decision, 2026-11-21): F1–F12 conflict with other keymaps and laptop media rows, so no action uses them. Commands use plain letter keys (`?`, `s`, `t`, `r`, `d`, `n`/`N`, `q`), which are typed as text while the search input is open, or Ctrl combinations that the user's WezTerm and GNOME leave free (Ctrl+F, Ctrl+←/→). Ctrl+Shift+letter and Shift+Enter are avoided because legacy terminal encodings cannot tell them apart.
 28. **Generic font families never resolve to nothing.** SVG text names generic families (`sans-serif`, `serif`, …) or fonts that may be missing; `fontdb` maps a generic family to the first fontconfig alias, or to Arial without fontconfig, and that font may not be installed. Any generic family without an installed face falls back to the bundled Liberation Sans, so text is always drawn (§6.2).
 29. **Table row separators are always on** (user decision, 2026-11-23): no option to turn them off; one separator per logical row, never between the wrapped lines of a cell (§6.1).
+30. **License**: `MIT OR Apache-2.0` (user decision, 2026-11-23), with `LICENSE-MIT` and `LICENSE-APACHE` at the root; the bundled Liberation Sans fonts keep their SIL Open Font License (`assets/fonts/LICENSE.txt`).
 
 ## 5. Quality bar
 
