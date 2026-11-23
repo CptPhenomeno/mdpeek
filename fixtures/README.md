@@ -1,6 +1,6 @@
-# readmd fixtures
+# mdpeek fixtures
 
-A folder to try `readmd` on: `readmd fixtures/`.
+A folder to try `mdpeek` on: `mdpeek fixtures/`.
 
 - `showcase.md`: every rendered element, five diagram types, a broken diagram,
   local, missing and remote images. Pick it in the sidebar.

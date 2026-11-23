@@ -1,7 +1,7 @@
-# readmd benchmark document
+# mdpeek benchmark document
 
-This file exercises **every element** that `readmd` must render. Open it with
-`readmd SAMPLE.md` and compare each section with its description. It is the
+This file exercises **every element** that `mdpeek` must render. Open it with
+`mdpeek SAMPLE.md` and compare each section with its description. It is the
 reference for manual checks; the automated showcase lives in `fixtures/`.
 
 [Jump to the table section](#tables) · [Jump to diagrams](#mermaid-diagrams)
@@ -39,7 +39,7 @@ and emoji such as 🚀 ✅ ⚠️ keep the layout aligned. Accents: àèéìòù
 
 - External: [Monaspace fonts](https://github.com/githubnext/monaspace) opens in the browser.
 - Mail: [write to someone](mailto:someone@example.com).
-- Anchor: [back to the top](#readmd-benchmark-document).
+- Anchor: [back to the top](#mdpeek-benchmark-document).
 - Anchor to a duplicate heading: [second "Notes"](#notes-1).
 - Missing anchor: [nowhere](#does-not-exist) shows "Anchor not found".
 - Local file: [another document](./fixtures/other.md) shows "Local file links are not supported".
@@ -143,11 +143,11 @@ def fibonacci(n: int) -> list[int]:
 JSON, shell, YAML and an unknown language:
 
 ```json
-{ "name": "readmd", "version": "0.1.0", "features": ["mermaid", "images"] }
+{ "name": "mdpeek", "version": "0.1.0", "features": ["mermaid", "images"] }
 ```
 
 ```bash
-cargo install --path . && readmd SAMPLE.md --protocol halfblocks
+cargo install --path . && mdpeek SAMPLE.md --protocol halfblocks
 ```
 
 ```yaml
@@ -273,7 +273,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant R as readmd
+    participant R as mdpeek
     participant M as merman
     U->>R: open SAMPLE.md
     R->>M: render(diagram source)
@@ -317,7 +317,7 @@ gantt
 
 ```mermaid
 mindmap
-  root((readmd))
+  root((mdpeek))
     Reading
       Markdown
       Code

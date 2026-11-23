@@ -1,9 +1,9 @@
-# readmd showcase document
+# mdpeek showcase document
 
-This file exercises **every element** that `readmd` must render. It is
+This file exercises **every element** that `mdpeek` must render. It is
 `SAMPLE.md` from the repository root, kept in step with it and moved into
 `fixtures/` with its own copy of the pictures (`assets/`). Open it with
-`readmd fixtures/` (pick `showcase.md` in the sidebar) or `readmd fixtures/showcase.md`.
+`mdpeek fixtures/` (pick `showcase.md` in the sidebar) or `mdpeek fixtures/showcase.md`.
 The automated snapshots of this document live in `tests/showcase.rs`.
 
 [Jump to the table section](#tables) · [Jump to diagrams](#mermaid-diagrams)
@@ -41,7 +41,7 @@ and emoji such as 🚀 ✅ ⚠️ keep the layout aligned. Accents: àèéìòù
 
 - External: [Monaspace fonts](https://github.com/githubnext/monaspace) opens in the browser.
 - Mail: [write to someone](mailto:someone@example.com).
-- Anchor: [back to the top](#readmd-showcase-document).
+- Anchor: [back to the top](#mdpeek-showcase-document).
 - Anchor to a duplicate heading: [second "Notes"](#notes-1).
 - Missing anchor: [nowhere](#does-not-exist) shows "Anchor not found".
 - Local file: [another document](./other.md) shows "Local file links are not supported".
@@ -145,11 +145,11 @@ def fibonacci(n: int) -> list[int]:
 JSON, shell, YAML and an unknown language:
 
 ```json
-{ "name": "readmd", "version": "0.1.0", "features": ["mermaid", "images"] }
+{ "name": "mdpeek", "version": "0.1.0", "features": ["mermaid", "images"] }
 ```
 
 ```bash
-cargo install --path . && readmd showcase.md --protocol halfblocks
+cargo install --path . && mdpeek showcase.md --protocol halfblocks
 ```
 
 ```yaml
@@ -275,7 +275,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant R as readmd
+    participant R as mdpeek
     participant M as merman
     U->>R: open showcase.md
     R->>M: render(diagram source)
@@ -319,7 +319,7 @@ gantt
 
 ```mermaid
 mindmap
-  root((readmd))
+  root((mdpeek))
     Reading
       Markdown
       Code

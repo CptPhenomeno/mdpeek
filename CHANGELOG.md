@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to readmd are listed here. The format follows
+All notable changes to mdpeek are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
@@ -8,6 +8,9 @@ All notable changes to readmd are listed here. The format follows
 
 ### Changed
 
+- The tool is now called mdpeek (formerly readmd): the crate, the binary, the
+  `make dist` and release asset names (`mdpeek-<version>-<os>-<arch>`), the
+  documentation and the fixtures all use the new name.
 - Table body rows are separated by horizontal rules, one per logical row.
 
 ### Fixed
