@@ -6,6 +6,11 @@ All notable changes to readmd are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- SVG text drawn blank on hosts without fontdb's default generic fonts: generic
+  families with no installed face now fall back to the bundled Liberation Sans.
+
 ## [0.1.0] - 2026-11-21
 
 First release: a terminal reader for Markdown files and Mermaid diagrams,
