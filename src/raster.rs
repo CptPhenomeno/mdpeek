@@ -41,18 +41,57 @@ fn fontdb() -> Arc<usvg::fontdb::Database> {
     DB.get_or_init(|| {
         let mut db = usvg::fontdb::Database::new();
         db.load_system_fonts();
-        // The faces diagrams are measured with (see `diagram::FONT_FAMILY`).
-        for face in crate::diagram::FONT_FACES {
-            db.load_font_data(face.to_vec());
-        }
+        load_bundled(&mut db);
         Arc::new(db)
     })
     .clone()
 }
 
+/// Loads the faces diagrams are measured with (see `diagram::FONT_FAMILY`)
+/// and makes every generic family resolve to something.
+fn load_bundled(db: &mut usvg::fontdb::Database) {
+    for face in crate::diagram::FONT_FACES {
+        db.load_font_data(face.to_vec());
+    }
+    apply_generic_fallbacks(db);
+}
+
+/// Points every generic family whose configured name has no face in `db` at
+/// the bundled Liberation Sans; families that resolve are left alone. Without
+/// this, `sans-serif` (and usvg's last-resort serif) draw nothing on hosts
+/// lacking fontdb's default names.
+fn apply_generic_fallbacks(db: &mut usvg::fontdb::Database) {
+    apply_generic_fallbacks_to(db, "Liberation Sans");
+}
+
+fn apply_generic_fallbacks_to(db: &mut usvg::fontdb::Database, fallback: &str) {
+    use usvg::fontdb::{Database, Family};
+    type Setter = fn(&mut Database, String);
+    let generics: [(Family<'static>, Setter); 5] = [
+        (Family::Serif, |d, n| d.set_serif_family(n)),
+        (Family::SansSerif, |d, n| d.set_sans_serif_family(n)),
+        (Family::Monospace, |d, n| d.set_monospace_family(n)),
+        (Family::Cursive, |d, n| d.set_cursive_family(n)),
+        (Family::Fantasy, |d, n| d.set_fantasy_family(n)),
+    ];
+    for (family, set) in generics {
+        let name = db.family_name(&family).to_string();
+        let present = db
+            .faces()
+            .any(|f| f.families.iter().any(|(n, _)| *n == name));
+        if !present {
+            set(db, fallback.to_string());
+        }
+    }
+}
+
 fn parse(svg: &str) -> Result<usvg::Tree, RasterError> {
+    parse_with(svg, fontdb())
+}
+
+fn parse_with(svg: &str, fontdb: Arc<usvg::fontdb::Database>) -> Result<usvg::Tree, RasterError> {
     let opt = usvg::Options {
-        fontdb: fontdb(),
+        fontdb,
         ..Default::default()
     };
     usvg::Tree::from_str(svg, &opt).map_err(|e| RasterError::Invalid(e.to_string()))
@@ -256,6 +295,56 @@ mod tests {
             r##"<text x="5" y="40" font-size="40" font-family="sans-serif" fill="#000">Hi</text>"##;
         let img = rasterise(&svg(100, 60, body), 100, 100).unwrap();
         assert!(img.pixels().any(|p| p.0[3] > 0), "no glyph pixels drawn");
+    }
+
+    /// A database holding only the bundled faces, as on a bare CI host.
+    fn bundled_only() -> Arc<usvg::fontdb::Database> {
+        let mut db = usvg::fontdb::Database::new();
+        load_bundled(&mut db);
+        Arc::new(db)
+    }
+
+    fn drawn_with(db: Arc<usvg::fontdb::Database>, family: &str) -> bool {
+        let body = format!(
+            r##"<text x="5" y="40" font-size="40" font-family="{family}" fill="#000">Hi</text>"##
+        );
+        let tree = parse_with(&svg(100, 60, &body), db).unwrap();
+        let mut pm = tiny_skia::Pixmap::new(100, 60).unwrap();
+        resvg::render(&tree, tiny_skia::Transform::identity(), &mut pm.as_mut());
+        pm.pixels().iter().any(|p| p.alpha() > 0)
+    }
+
+    #[test]
+    fn bundled_only_database_draws_sans_serif_text() {
+        assert!(drawn_with(bundled_only(), "sans-serif"));
+    }
+
+    #[test]
+    fn bundled_only_database_draws_serif_text() {
+        assert!(drawn_with(bundled_only(), "serif"));
+    }
+
+    #[test]
+    fn unresolved_generic_families_map_to_liberation_sans() {
+        use usvg::fontdb::Family;
+        let db = bundled_only();
+        for f in [Family::Monospace, Family::Cursive, Family::Fantasy] {
+            assert_eq!(db.family_name(&f), "Liberation Sans");
+        }
+        assert!(drawn_with(db, "monospace"));
+    }
+
+    #[test]
+    fn resolving_generic_family_keeps_its_mapping() {
+        use usvg::fontdb::Family;
+        let mut db = usvg::fontdb::Database::new();
+        load_bundled(&mut db);
+        // Serif points at a present face; monospace at one that does not exist.
+        db.set_serif_family("Liberation Sans");
+        db.set_monospace_family("No Such Font");
+        apply_generic_fallbacks_to(&mut db, "Fallback Probe");
+        assert_eq!(db.family_name(&Family::Serif), "Liberation Sans");
+        assert_eq!(db.family_name(&Family::Monospace), "Fallback Probe");
     }
 
     #[test]
