@@ -6,6 +6,12 @@ All notable changes to mdpeek are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Dual license, MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`).
+- README install instructions: prebuilt binaries with mise or by hand, or
+  from source with `cargo install --git`.
+
 ### Changed
 
 - The tool is now called mdpeek (formerly readmd): the crate, the binary, the
