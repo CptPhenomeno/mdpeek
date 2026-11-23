@@ -2,6 +2,8 @@
 //! through the real `App` with halfblocks and with diagram text mode on.
 //! Pictures are rendered by the real worker (merman, resvg, image decoder).
 
+#![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
+
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
