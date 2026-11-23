@@ -8,8 +8,9 @@ natively (`merman` and `resvg`): no Node.js, no Chromium, no network.
 
 ## Install
 
-Every release on GitHub ships prebuilt binaries for Linux and macOS (amd64 and
-arm64), named `mdpeek-<version>-<os>-<arch>`, with a `checksums.txt`.
+Every release on GitHub ships prebuilt binaries for Linux (amd64 and arm64),
+named `mdpeek-<version>-linux-<arch>`, with a `checksums.txt`. On other
+systems, build from source.
 
 ### With mise
 

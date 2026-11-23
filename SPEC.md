@@ -241,7 +241,7 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
   - `mdpeek missing.md` exits with code 2 and a clear message.
 - Delivery (user request, modelled on the `kb` repository's GitHub workflows):
   - `.github/workflows/check.yml` runs `make check` on every push to `develop`, through a composite action `.github/actions/setup-and-check` (Rust toolchain from `rust-version`, cargo cache, `make check`).
-  - `.github/workflows/deploy.yml` runs on `v*` tags with `contents: write`: setup and check, then release binaries `mdpeek-<version>-<os>-<arch>` for linux/amd64, linux/arm64, darwin/amd64 and darwin/arm64 (one native runner per target, so no cross-compilation toolchain is needed), `checksums.txt` (sha256), release notes extracted from `CHANGELOG.md` by `.github/scripts/release-notes.sh <tag>`, and `gh release create` with the binaries and checksums.
+  - `.github/workflows/deploy.yml` runs on `v*` tags with `contents: write`: setup and check, then release binaries `mdpeek-<version>-<os>-<arch>` for linux/amd64 and linux/arm64 (one native runner per target, so no cross-compilation toolchain is needed; macOS builds were dropped when GitHub retired the macos-14 runner, user decision 2026-11-23, KB-103), `checksums.txt` (sha256), release notes extracted from `CHANGELOG.md` by `.github/scripts/release-notes.sh <tag>`, and `gh release create` with the binaries and checksums.
   - `CHANGELOG.md` follows Keep a Changelog with Semantic Versioning; the first entry is `0.1.0`.
 
 ## 6. Iteration: table separators, CI fixes, rename (2026-11-23)
