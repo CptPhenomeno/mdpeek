@@ -63,3 +63,29 @@ fn unreadable_file_exits_2() {
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// SPEC §5: `readmd missing.md` exits with code 2 and a clear message, and the
+/// TUI is never entered (nothing on stdout, a one-line message on stderr).
+#[test]
+fn readmd_missing_md_exits_2_with_one_clear_stderr_line_and_no_tui_output() {
+    let dir = tmpdir();
+    let out = Command::cargo_bin("readmd")
+        .unwrap()
+        .current_dir(dir.path())
+        .arg("missing.md")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty(), "stdout: {:?}", out.stdout);
+    let err = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        !err.contains('\u{1b}'),
+        "terminal escapes on stderr: {err:?}"
+    );
+    assert_eq!(err.trim_end().lines().count(), 1, "{err:?}");
+    assert!(err.contains("missing.md"), "{err}");
+    assert!(
+        err.to_lowercase().contains("not found") || err.to_lowercase().contains("no such"),
+        "{err}"
+    );
+}

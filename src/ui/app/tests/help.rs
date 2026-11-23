@@ -184,3 +184,95 @@ fn snapshot_of_the_help_overlay() {
     terminal.draw(|f| app.render(f)).unwrap();
     insta::assert_snapshot!(terminal.backend());
 }
+
+/// Lines of the help text under `heading`, up to the next blank line.
+fn help_section(app: &App, heading: &str) -> Vec<String> {
+    let lines = app.help_lines();
+    let start = lines
+        .iter()
+        .position(|l| l == heading)
+        .unwrap_or_else(|| panic!("no help section {heading:?}"));
+    lines[start + 1..]
+        .iter()
+        .take_while(|l| !l.is_empty())
+        .cloned()
+        .collect()
+}
+
+/// Every key of the SPEC §3.6-§3.10 tables, by help section. The list is
+/// explicit on purpose: the SPEC tables use prose and glyphs ("↑ / ↓",
+/// "PgUp / PgDn, Space", "`+` / `=`") that a parser would have to guess at,
+/// while this list makes a key that is dropped from the help (or from the
+/// SPEC) a visible, reviewed change. Each entry is a label as the help shows it.
+const SPEC_KEYS: &[(&str, &[&str])] = &[
+    // §3.8 keys (document focus) and §3.6.1-2 focus and activation.
+    (
+        "Document",
+        &[
+            "Up",
+            "Down",
+            "PgUp",
+            "PgDn",
+            "Space",
+            "Home",
+            "End",
+            "Tab",
+            "Shift+Tab",
+            "Enter",
+            "Esc",
+        ],
+    ),
+    // §3.8 keys that work whichever pane has focus, §3.9 and §3.10 openers.
+    (
+        "Global",
+        &[
+            "Ctrl+F",
+            "n",
+            "N",
+            "?",
+            "s",
+            "t",
+            "r",
+            "d",
+            "q",
+            "Ctrl+Left",
+            "Ctrl+Right",
+        ],
+    ),
+    // §3.7.3 sidebar keys.
+    (
+        "Sidebar",
+        &["Up", "Down", "Left", "Right", "Enter", "Home", "End"],
+    ),
+    // §3.6.3 full-screen view keys.
+    (
+        "Full-screen view",
+        &[
+            "+", "=", "-", "0", "Home", "Left", "Right", "Up", "Down", "Esc",
+        ],
+    ),
+    // §3.8 and §3.6.4 mouse.
+    ("Mouse", &["Mouse wheel", "Click", "Double click"]),
+    // §3.10 TOC overlay keys.
+    ("Contents (TOC)", &["Up", "Down", "Enter", "Esc"]),
+];
+
+#[test]
+fn the_help_text_lists_every_key_of_spec_3_6_to_3_10() {
+    let app = app_from(LINKS, 60, 20 + CHROME);
+    for (heading, labels) in SPEC_KEYS {
+        let section = help_section(&app, heading);
+        for label in *labels {
+            let listed = section.iter().any(|row| {
+                let key = row.trim_start();
+                // The key column ends at the first double space.
+                let key = key.split("  ").next().unwrap_or(key);
+                key == *label || key.split(" / ").any(|k| k == *label)
+            });
+            assert!(
+                listed,
+                "key {label:?} missing from help section {heading:?}: {section:#?}"
+            );
+        }
+    }
+}
