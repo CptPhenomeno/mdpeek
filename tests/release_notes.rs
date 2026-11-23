@@ -200,3 +200,64 @@ fn deploy_workflow_names_artifacts_mdpeek() {
     assert!(deploy.contains("name: mdpeek-${{ matrix.os }}-${{ matrix.arch }}"));
     assert!(deploy.contains("dist/mdpeek-*"));
 }
+
+/// Release binaries are built for Linux only (macOS builds dropped after the
+/// macos-14 runner retirement, KB-103).
+#[test]
+fn deploy_workflow_builds_only_linux_targets() {
+    let deploy = std::fs::read_to_string(root().join(".github/workflows/deploy.yml")).unwrap();
+    let targets: Vec<&str> = deploy
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("- { runner:"))
+        .collect();
+    assert_eq!(targets.len(), 2, "{targets:?}");
+    assert!(
+        targets.iter().all(|t| t.contains("os: linux")),
+        "{targets:?}"
+    );
+    assert!(!deploy.contains("macos"), "a macOS runner is still listed");
+}
+
+/// First major version of each official action that runs on Node 24; older
+/// majors target the deprecated Node 20.
+const NODE24_MAJORS: [(&str, u32); 4] = [
+    ("actions/checkout", 5),
+    ("actions/cache", 5),
+    ("actions/upload-artifact", 5),
+    ("actions/download-artifact", 7),
+];
+
+#[test]
+fn workflows_use_no_node20_actions() {
+    let files = [
+        ".github/workflows/check.yml",
+        ".github/workflows/deploy.yml",
+        ".github/actions/setup-and-check/action.yml",
+    ];
+    for file in files {
+        let text = std::fs::read_to_string(root().join(file)).unwrap();
+        for used in text.lines().filter_map(|l| {
+            l.trim()
+                .strip_prefix("- uses: ")
+                .or_else(|| l.trim().strip_prefix("uses: "))
+        }) {
+            let Some((action, version)) = used.split_once('@') else {
+                continue;
+            };
+            let Some(&(_, min)) = NODE24_MAJORS.iter().find(|(a, _)| *a == action) else {
+                continue;
+            };
+            let major: u32 = version
+                .trim_start_matches('v')
+                .split('.')
+                .next()
+                .and_then(|m| m.parse().ok())
+                .unwrap();
+            assert!(
+                major >= min,
+                "{file}: {used} runs on Node 20 (need v{min}+)"
+            );
+        }
+    }
+}

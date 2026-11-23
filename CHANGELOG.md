@@ -14,6 +14,10 @@ All notable changes to mdpeek are listed here. The format follows
 
 ### Changed
 
+- Release binaries are built for Linux only (amd64, arm64); the macOS builds
+  are dropped for now.
+- The release workflow uses actions on Node 24 (cache, upload-artifact,
+  download-artifact).
 - The tool is now called mdpeek (formerly readmd): the crate, the binary, the
   `make dist` and release asset names (`mdpeek-<version>-<os>-<arch>`), the
   documentation and the fixtures all use the new name.
