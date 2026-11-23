@@ -3,13 +3,13 @@ source: tests/showcase.rs
 expression: app_screen(&mut app)
 ---
 "┌──────────────────────────────────────────────────────────────────────────────┐"
-"│ readmd showcase document                                                     │"
+"│ mdpeek showcase document                                                     │"
 "│ ════════════════════════════════════════════════════════════════════════════ │"
 "│                                                                              │"
-"│ This file exercises every element that readmd must render. It is SAMPLE.md   │"
+"│ This file exercises every element that mdpeek must render. It is SAMPLE.md   │"
 "│ from the repository root, kept in step with it and moved into fixtures/ with │"
-"│ its own copy of the pictures (assets/). Open it with readmd fixtures/ (pick  │"
-"│ showcase.md in the sidebar) or readmd fixtures/showcase.md. The automated    │"
+"│ its own copy of the pictures (assets/). Open it with mdpeek fixtures/ (pick  │"
+"│ showcase.md in the sidebar) or mdpeek fixtures/showcase.md. The automated    │"
 "│ snapshots of this document live in tests/showcase.rs.                        │"
 "│                                                                              │"
 "│ Jump to the table section · Jump to diagrams                                 │"

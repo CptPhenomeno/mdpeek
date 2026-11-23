@@ -1,4 +1,4 @@
-# readmd
+# mdpeek
 
 A terminal reader for Markdown files and Mermaid diagrams, written in Rust and
 shipped as a single binary. It renders GitHub-flavoured Markdown with
@@ -8,25 +8,25 @@ natively (`merman` and `resvg`): no Node.js, no Chromium, no network.
 
 ## Build and install
 
-`readmd` is not published on crates.io (the name is taken), so build it from
+`mdpeek` is not published on crates.io (the name is taken), so build it from
 source. It needs Rust 1.95 or newer (edition 2024).
 
 ```sh
-git clone <repository-url> readmd && cd readmd
-cargo install --path .     # installs `readmd` into ~/.cargo/bin
+git clone <repository-url> mdpeek && cd mdpeek
+cargo install --path .     # installs `mdpeek` into ~/.cargo/bin
 ```
 
 Other targets:
 
 ```sh
 make check   # cargo fmt --check, clippy -D warnings, cargo test
-make dist    # release binary in dist/readmd-<version>-<os>-<arch>
+make dist    # release binary in dist/mdpeek-<version>-<os>-<arch>
 ```
 
 ## Usage
 
 ```
-readmd [OPTIONS] [PATH]
+mdpeek [OPTIONS] [PATH]
 ```
 
 | Argument / option | Meaning |
@@ -146,7 +146,7 @@ text while the search input is open. No action uses function keys.
 
 ## Terminals and graphics protocols
 
-With `--protocol auto` (the default) readmd detects what the terminal supports
+With `--protocol auto` (the default) mdpeek detects what the terminal supports
 at start-up:
 
 - WezTerm: iTerm2 protocol (WezTerm has no Kitty unicode placeholders).
@@ -155,14 +155,14 @@ at start-up:
 - Halfblocks: the fallback when nothing is detected, works anywhere.
 
 Force one with `--protocol`. Inside tmux, graphics depend on
-`allow-passthrough`; when detection fails readmd falls back to halfblocks.
+`allow-passthrough`; when detection fails mdpeek falls back to halfblocks.
 Beyond that tmux and screen are best effort.
 
 Linux is the target; macOS and Windows may work but are not tested.
 
 ### Opaque theme
 
-readmd has one dark theme and paints an explicit background on every cell, so
+mdpeek has one dark theme and paints an explicit background on every cell, so
 terminal transparency is never visible while reading. In WezTerm keep
 `text_background_opacity` at `1.0` (the default); a lower value lets the
 terminal blend the text background and spoils the picture edges.
@@ -181,13 +181,13 @@ config.font = wezterm.font_with_fallback({
 })
 ```
 
-The font is chosen by your terminal, not by readmd: readmd only prints text and
+The font is chosen by your terminal, not by mdpeek: mdpeek only prints text and
 cannot change it.
 
 ## Try it
 
-- `readmd SAMPLE.md`: a benchmark document with every rendered element.
-- `readmd fixtures/`: a showcase folder with nested documents, five diagram
+- `mdpeek SAMPLE.md`: a benchmark document with every rendered element.
+- `mdpeek fixtures/`: a showcase folder with nested documents, five diagram
   types, a broken diagram, and local, missing and remote images. See
   [fixtures/README.md](fixtures/README.md).
 
