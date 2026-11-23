@@ -4,7 +4,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use merman::ascii::{AsciiRenderOptions, AsciiViewportPolicy, OverflowPolicy};
@@ -141,20 +140,10 @@ fn text_of(src: &str) -> Result<String, RenderError> {
     }
 }
 
-fn fontdb() -> Arc<resvg::usvg::fontdb::Database> {
-    static DB: OnceLock<Arc<resvg::usvg::fontdb::Database>> = OnceLock::new();
-    DB.get_or_init(|| {
-        let mut db = resvg::usvg::fontdb::Database::new();
-        db.load_system_fonts();
-        Arc::new(db)
-    })
-    .clone()
-}
-
 /// Rasterise at `width` px (natural size scaled to fit); returns (w, h, rgba, intrinsic).
 fn rasterise(svg: &str, width: u32) -> (u32, u32, Vec<u8>, (f32, f32)) {
     let opt = resvg::usvg::Options {
-        fontdb: fontdb(),
+        fontdb: readmd::raster::fontdb(),
         ..Default::default()
     };
     let tree = resvg::usvg::Tree::from_str(svg, &opt).expect("parse svg");

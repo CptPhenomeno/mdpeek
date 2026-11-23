@@ -36,7 +36,10 @@ impl std::error::Error for RasterError {}
 /// Shared font database. Loading system fonts takes about 20 ms (SPEC spike
 /// KB-6), so it happens once, on the first parse, and never on the first-paint
 /// path: callers run this module from the raster worker.
-fn fontdb() -> Arc<usvg::fontdb::Database> {
+///
+/// Also the font setup tests should rasterise with: system fonts, the bundled
+/// faces and the generic-family fallback.
+pub fn fontdb() -> Arc<usvg::fontdb::Database> {
     static DB: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     DB.get_or_init(|| {
         let mut db = usvg::fontdb::Database::new();
