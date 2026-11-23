@@ -1,6 +1,6 @@
-# readmd — specification
+# mdpeek — specification
 
-`readmd` is a terminal (TUI) Markdown reader for Linux, written in Rust and shipped as a single binary. It renders GitHub-flavoured Markdown with syntax-highlighted code, local images and Mermaid diagrams drawn as real images, using the terminal's graphics protocol. It is for developers who read project documentation in the terminal and want diagrams to look the way they do on GitHub. Mermaid rendering is native (the `merman` crate), so there is no Node.js, no browser and no network access.
+`mdpeek` is a terminal (TUI) Markdown reader for Linux, written in Rust and shipped as a single binary. It renders GitHub-flavoured Markdown with syntax-highlighted code, local images and Mermaid diagrams drawn as real images, using the terminal's graphics protocol. It is for developers who read project documentation in the terminal and want diagrams to look the way they do on GitHub. Mermaid rendering is native (the `merman` crate), so there is no Node.js, no browser and no network access.
 
 ## 1. Goal
 
@@ -20,7 +20,7 @@
 - Editing files.
 - Guaranteed support inside tmux/screen (best effort only).
 - Windows and macOS as targets (they may work, they are not tested).
-- Publishing to crates.io (the name `readmd` is taken there).
+- Publishing to crates.io (`publish = false`; the name `mdpeek` is free there, publishing is a later decision).
 
 ## 2. Glossary
 
@@ -44,7 +44,7 @@
 ### 3.1 Command line
 
 ```
-readmd [OPTIONS] [PATH]
+mdpeek [OPTIONS] [PATH]
 ```
 
 | Argument / option | Meaning |
@@ -82,7 +82,7 @@ Parsing uses `pulldown-cmark` with tables, task lists, strikethrough and footnot
 | Task lists | `☐` / `☑` markers. |
 | Block quotes, nested | A `│` bar per nesting level, dimmed text colour. |
 | Code blocks | Box with background colour, language label at top right, syntax highlighted with `syntect` (dark theme); unknown language → plain. Long lines are not wrapped: they are truncated with `…`. |
-| Tables | Box-drawing borders, header row bold, column alignment from the GFM delimiter row. If the table is wider than the pane, columns shrink proportionally and cell text wraps inside the cell. |
+| Tables | Box-drawing borders, header row bold, column alignment from the GFM delimiter row. A `├─┼─┤` separator row follows the header and sits between every two body rows, so each row is visibly delimited (§6.1). If the table is wider than the pane, columns shrink proportionally and cell text wraps inside the cell. |
 | Horizontal rule | A full-width `─` row. |
 | Footnotes | Reference shown as `[n]`; definitions listed at the end of the document under a rule. |
 | HTML blocks / inline HTML | Shown as dimmed raw text (not interpreted). |
@@ -102,8 +102,8 @@ A `.mmd`/`.mermaid` file is a document made of a single diagram.
 
 ### 3.5 Images and graphics
 
-1. **Protocol detection** at start-up (unless `--protocol` is given): use `ratatui-image`'s detection (`Picker::from_query_stdio()`), which knows each terminal's real support — on WezTerm it picks iTerm2, because WezTerm has no Kitty unicode placeholders; Kitty is used only where the terminal supports it (e.g. kitty itself); if nothing is detected, use halfblocks. Pictures are encoded once at their slot size and drawn as vertical slices while scrolling (see `docs/spikes/image-clipping.md`). iTerm2 rows are sent by readmd itself sized in cells (`width=<cols>;height=1`), one slice per row of exactly one cell height; the raster is padded with the background to whole cells, so the picture is exactly cols×cell width by rows×cell height pixels and maps 1:1 to the screen like Sixel, as for every protocol (KB-72, KB-74). The cell size in pixels is read from the terminal; if unavailable, assume 10×20 px.
-2. **Local images** `![alt](path)`: `path` is resolved relative to the document's directory. Supported formats: PNG, JPEG, GIF (first frame only), SVG (rasterised with `resvg`), WebP. The picture is scaled down to fit the pane width (never scaled up beyond its natural size) and capped at the pane height, keeping the aspect ratio.
+1. **Protocol detection** at start-up (unless `--protocol` is given): use `ratatui-image`'s detection (`Picker::from_query_stdio()`), which knows each terminal's real support — on WezTerm it picks iTerm2, because WezTerm has no Kitty unicode placeholders; Kitty is used only where the terminal supports it (e.g. kitty itself); if nothing is detected, use halfblocks. Pictures are encoded once at their slot size and drawn as vertical slices while scrolling (see `docs/spikes/image-clipping.md`). iTerm2 rows are sent by mdpeek itself sized in cells (`width=<cols>;height=1`), one slice per row of exactly one cell height; the raster is padded with the background to whole cells, so the picture is exactly cols×cell width by rows×cell height pixels and maps 1:1 to the screen like Sixel, as for every protocol (KB-72, KB-74). The cell size in pixels is read from the terminal; if unavailable, assume 10×20 px.
+2. **Local images** `![alt](path)`: `path` is resolved relative to the document's directory. Supported formats: PNG, JPEG, GIF (first frame only), SVG (rasterised with `resvg`; text whose font cannot be found on the system is drawn with the bundled Liberation Sans, §6.2), WebP. The picture is scaled down to fit the pane width (never scaled up beyond its natural size) and capped at the pane height, keeping the aspect ratio.
 3. **Missing or unreadable image**: one dimmed row `[image not found: <path>]`, followed by the alt text if any.
 4. **Remote image** (`http://`, `https://`): one dimmed row `[remote image: <url>]` plus alt text. No network request.
 5. **Image slots** reserve whole rows: `rows = ceil(pixel_height / cell_pixel_height)`. Text never overlaps a slot.
@@ -193,7 +193,7 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
 ## 4. Edge cases and decisions
 
 1. **Native Mermaid only.** Diagrams are rendered by `merman`; no Node.js/Chromium fallback. Small visual differences from mermaid.js are accepted.
-2. **Dark theme only, opaque.** One fixed dark theme; no detection. `readmd` paints an explicit RGB background on every cell of the screen (margins, borders, sidebar, status bar, overlays), so terminal transparency is never visible while reading. Headings, bold and italic are made distinct by colour and spacing as well as by font face, because many terminal fonts have no bold or italic (KB-68).
+2. **Dark theme only, opaque.** One fixed dark theme; no detection. `mdpeek` paints an explicit RGB background on every cell of the screen (margins, borders, sidebar, status bar, overlays), so terminal transparency is never visible while reading. Headings, bold and italic are made distinct by colour and spacing as well as by font face, because many terminal fonts have no bold or italic (KB-68).
 3. **Non-UTF-8 files** are decoded lossily; the status bar shows "File is not valid UTF-8" for as long as that document is open (an indicator, not a transient message, listed before any message such as "Graphics: …" or "Reloaded").
 4. **Empty file** shows "Empty document" in the pane.
 5. **Very large documents** (≥ 1 MB): layout must stay responsive; diagrams and images are rasterised lazily, only when their slot is within one screen of the viewport.
@@ -202,7 +202,7 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
 8. **Local file links are not followed** (user decision: navigation is sidebar-only).
 9. **Anchors** use GitHub's slug rules (lowercase, spaces → `-`, punctuation removed, `-1`, `-2` suffixes for duplicates).
 10. **tmux**: graphics depend on `allow-passthrough`; when detection fails, halfblocks are used. No special handling beyond that.
-11. **Name**: binary and package are `readmd`; the crates.io name is taken, so the crate is not published.
+11. **Name**: binary and package are `mdpeek` (renamed from `readmd`, whose crates.io name is taken; §6.3). The crate is not published yet.
 12. **Diagram size**: diagrams are never scaled above their natural size (§3.4.1), same rule as images.
 13. **Picture cache limit**: LRU eviction above 256 MB of pixel data (§3.4.3).
 14. **Search across wrapping**: matching runs on logical block text, so wrapped phrases match (§3.9.2).
@@ -219,6 +219,8 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
 25. **Large documents**: laying out a 1 MB document takes under 100 ms in a release build.
 26. **merman unknowns** (text output per diagram type, dark theme selection, labels in `foreignObject` that resvg would drop) are verified by an early spike; any clash with §3.4 goes back to the user before dependent work starts.
 27. **No function keys** (user decision, 2026-11-21): F1–F12 conflict with other keymaps and laptop media rows, so no action uses them. Commands use plain letter keys (`?`, `s`, `t`, `r`, `d`, `n`/`N`, `q`), which are typed as text while the search input is open, or Ctrl combinations that the user's WezTerm and GNOME leave free (Ctrl+F, Ctrl+←/→). Ctrl+Shift+letter and Shift+Enter are avoided because legacy terminal encodings cannot tell them apart.
+28. **Generic font families never resolve to nothing.** SVG text names generic families (`sans-serif`, `serif`, …) or fonts that may be missing; `fontdb` maps a generic family to the first fontconfig alias, or to Arial without fontconfig, and that font may not be installed. Any generic family without an installed face falls back to the bundled Liberation Sans, so text is always drawn (§6.2).
+29. **Table row separators are always on** (user decision, 2026-11-23): no option to turn them off; one separator per logical row, never between the wrapped lines of a cell (§6.1).
 
 ## 5. Quality bar
 
@@ -229,18 +231,72 @@ Rust edition 2024; minimum Rust version is the one required by `merman` (1.95).
   - No `unwrap()`/`expect()` outside tests and start-up code, unless the reason is commented.
   - Code, comments, docs and commit messages in English. No AI attribution lines (`Co-Authored-By`, "Generated with …") in commits.
 - Acceptance criteria of the whole work:
-  - `SAMPLE.md` at the repository root (with `sample-assets/`) is the benchmark document: it shows every element `readmd` must render, and `readmd SAMPLE.md` renders each of its sections as the document describes.
+  - `SAMPLE.md` at the repository root (with `sample-assets/`) is the benchmark document: it shows every element `mdpeek` must render, and `mdpeek SAMPLE.md` renders each of its sections as the document describes.
   - A `fixtures/` folder contains a showcase document, built from `SAMPLE.md`, with every element of §3.3, at least five Mermaid diagram types (flowchart, sequence, class, gantt, mindmap), one diagram with a syntax error, local PNG/SVG images, a missing image and a remote image.
-  - `readmd fixtures/` in WezTerm (iTerm2 protocol, as detected) shows diagrams and images as sharp pictures, and scrolling never leaves picture fragments on screen.
+  - `mdpeek fixtures/` in WezTerm (iTerm2 protocol, as detected) shows diagrams and images as sharp pictures, and scrolling never leaves picture fragments on screen.
   - The same command with `--protocol halfblocks` shows all pictures with halfblocks; `d` shows diagrams as text.
   - Every key in §3.6–§3.10 works as specified and is listed in the `?` help.
   - Opening the showcase document takes under 300 ms to first paint (diagrams may still be rendering) on a modern laptop.
-  - `readmd missing.md` exits with code 2 and a clear message.
+  - `mdpeek missing.md` exits with code 2 and a clear message.
 - Delivery (user request, modelled on the `kb` repository's GitHub workflows):
   - `.github/workflows/check.yml` runs `make check` on every push to `develop`, through a composite action `.github/actions/setup-and-check` (Rust toolchain from `rust-version`, cargo cache, `make check`).
-  - `.github/workflows/deploy.yml` runs on `v*` tags with `contents: write`: setup and check, then release binaries `readmd-<version>-<os>-<arch>` for linux/amd64, linux/arm64, darwin/amd64 and darwin/arm64 (one native runner per target, so no cross-compilation toolchain is needed), `checksums.txt` (sha256), release notes extracted from `CHANGELOG.md` by `.github/scripts/release-notes.sh <tag>`, and `gh release create` with the binaries and checksums.
+  - `.github/workflows/deploy.yml` runs on `v*` tags with `contents: write`: setup and check, then release binaries `mdpeek-<version>-<os>-<arch>` for linux/amd64, linux/arm64, darwin/amd64 and darwin/arm64 (one native runner per target, so no cross-compilation toolchain is needed), `checksums.txt` (sha256), release notes extracted from `CHANGELOG.md` by `.github/scripts/release-notes.sh <tag>`, and `gh release create` with the binaries and checksums.
   - `CHANGELOG.md` follows Keep a Changelog with Semantic Versioning; the first entry is `0.1.0`.
 
-## 6. Open questions
+## 6. Iteration: table separators, CI fixes, rename (2026-11-23)
+
+The scope of this iteration, after the `0.1.0` release. Only the work below is planned; everything else in this document is already built. The version number does not change (the changes go under `[Unreleased]` in `CHANGELOG.md`).
+
+### 6.1 Table row separators
+
+Problem: only the top border, the line under the header and the bottom border are drawn, so body rows are not visibly delimited.
+
+1. `src/layout/table.rs` emits a `├─┼─┤` border row (same widths, same `theme::rule()` style, `RowKind::Table`, same block index) between every two consecutive body rows. The existing borders stay as they are.
+2. A body row whose cells wrap to several lines gets one separator after the whole row, not after each line.
+3. A table with no body rows or a single body row has no extra separator.
+4. When columns are truncated (§3.3, `…` marker), separator rows get the marker too, like every other table row, and stay within the content width.
+5. Search, focus, links and the layout index are unaffected: separators carry no text spans and no focusable.
+
+Expected rendering:
+
+```
+┌───────┬──────┐
+│ Name  │ Qty  │
+├───────┼──────┤
+│ alpha │    1 │
+├───────┼──────┤
+│ beta  │    2 │
+└───────┴──────┘
+```
+
+### 6.2 CI: fonts and workflow validation
+
+Problem: `check.yml` fails on GitHub's `ubuntu-latest` runner (and in a clean `rust:1.95` container) with `raster::tests::text_is_drawn_with_system_fonts` → "no glyph pixels drawn". Locally it passes because the developer machine has the font fontconfig prefers.
+
+Cause: `raster::fontdb()` loads system fonts and the bundled Liberation Sans faces, but the generic families keep `fontdb`'s mapping (first fontconfig alias, or Arial without fontconfig). When that font is not installed, `font-family="sans-serif"` resolves to nothing and usvg draws no text. usvg's last fallback is the generic `serif` family, which can be missing too. This also blanks text in users' SVG images on such machines.
+
+1. In `raster::fontdb()`, after loading, every generic family (`serif`, `sans-serif`, `monospace`, `cursive`, `fantasy`) whose configured name has no face in the database is set to `Liberation Sans`. Families that resolve to an installed font are left alone, so machines with good fonts render exactly as before.
+2. A unit test proves the fallback without depending on the host fonts: a database with no system fonts, only the bundled faces, still draws `sans-serif` and `serif` text.
+3. `workflows_are_valid` (`tests/release_notes.rs`) is skipped, with a message on stderr, when neither `actionlint` nor Python's `yaml` module is available, instead of failing (macOS runners have `python3` but not PyYAML, which would break `deploy.yml`). When one of them is available it still validates both workflows.
+4. No other workflow change is planned: the action versions in use exist, and `make check` passes with Rust 1.95 apart from the font test.
+
+### 6.3 Rename `readmd` → `mdpeek`
+
+`readmd` is taken on crates.io; `mdpeek` is free (checked 2026-11-23).
+
+1. Renamed: package and binary name in `Cargo.toml` (and `Cargo.lock`), the clap command name and `--help`/`--version` output, `make dist` output (`dist/mdpeek-<version>-<os>-<arch>`), the step names, artifact names and file patterns in `.github/workflows/deploy.yml`, the composite action's name, `README.md`, `SAMPLE.md`, fixtures, examples, tests (including `CARGO_BIN_EXE_*`, `tests/pty/quit_after_detect.py`), snapshots, internal identifiers and thread names that contain `readmd` (`readmd_theme`, `readmd_palette`, `readmd-scan`, …), and this document.
+2. `CHANGELOG.md`: an `[Unreleased]` entry records the rename; the `0.1.0` entry keeps its historical text.
+3. Not renamed: the GitHub repository (the user renames it), the local folder `md-reader`, the kb board. `publish = false` stays.
+4. After the rename, `git grep -i readmd` finds only mentions of the old name as history: `CHANGELOG.md` and §4.11 and §6 of this document.
+
+### 6.4 Acceptance criteria of the iteration
+
+- `make check` passes locally and in a clean `rust:1.95` container on a fresh clone (`docker run --rm -v <clone>:/w -w /w rust:1.95 sh -c 'rustup component add rustfmt clippy && make check'`).
+- `check.yml` is green on GitHub after the push to `develop` (verified by the user).
+- `mdpeek SAMPLE.md` shows the tables of section 7 with a separator between every two rows.
+- `cargo run -- --version` prints `mdpeek 0.1.0`; `make dist-name` prints `dist/mdpeek-0.1.0-<os>-<arch>`.
+- No `readmd` left in tracked files except the history mentions of §6.3.4.
+
+## 7. Open questions
 
 - (none)
