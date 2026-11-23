@@ -3,11 +3,11 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
 
-use readmd::diagram::{Rendered, render_svg};
-use readmd::raster::rasterise;
+use mdpeek::diagram::{Rendered, render_svg};
+use mdpeek::raster::rasterise;
 
 const CLASS: &str = "classDiagram\n  class Layout\n  class Document\n  class Block\n  Document : +Vec<Row> rows\n  Document : +from_path(Path) Document\n  Layout --> Document\n  Document --> Block\n";
-const MINDMAP: &str = "mindmap\n  root((readmd))\n    Navigation\n    Markdown\n    Mermaid\n";
+const MINDMAP: &str = "mindmap\n  root((mdpeek))\n    Navigation\n    Markdown\n    Mermaid\n";
 const STATE: &str = "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Focused : Enter on a diagram\n  Focused --> Idle\n";
 
 fn svg(src: &str) -> String {

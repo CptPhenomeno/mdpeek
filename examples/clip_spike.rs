@@ -10,6 +10,7 @@
 use std::{io, time::Instant};
 
 use image::{DynamicImage, Rgba, RgbaImage};
+use mdpeek::graphics::{PictureRenderer, PictureRequest, SlicedRenderer, flatten_over};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -17,7 +18,6 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 use ratatui_image::picker::{Picker, ProtocolType};
-use readmd::graphics::{PictureRenderer, PictureRequest, SlicedRenderer, flatten_over};
 
 const BG: Rgba<u8> = Rgba([30, 30, 46, 255]);
 

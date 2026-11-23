@@ -5,15 +5,15 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
 
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
+use mdpeek::graphics::{
+    PictureRenderer, PictureRequest, SlicedRenderer, clear_row_bands, flatten_over, visible_part,
+};
 use ratatui::{
     buffer::{Buffer, CellDiffOption},
     layout::Rect,
     style::Color,
 };
 use ratatui_image::picker::{Picker, ProtocolType};
-use readmd::graphics::{
-    PictureRenderer, PictureRequest, SlicedRenderer, clear_row_bands, flatten_over, visible_part,
-};
 
 const CELL_W: u32 = 10;
 const CELL_H: u32 = 20;

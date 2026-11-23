@@ -2,8 +2,8 @@
 
 use std::time::Instant;
 
-use readmd::doc::{Document, Source};
-use readmd::layout;
+use mdpeek::doc::{Document, Source};
+use mdpeek::layout;
 
 /// A generated document of about `target` bytes mixing every block kind.
 fn generated(target: usize) -> String {

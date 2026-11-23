@@ -12,14 +12,14 @@ use std::{io, path::PathBuf};
 
 use crossterm::event::{self, Event, KeyCode};
 use image::{DynamicImage, RgbaImage};
-use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect, widgets::Paragraph};
-use ratatui_image::picker::{Picker, ProtocolType};
-use readmd::{
+use mdpeek::{
     doc::{Document, Source},
     graphics::PictureSet,
     layout::PictureKey,
     ui::App,
 };
+use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect, widgets::Paragraph};
+use ratatui_image::picker::{Picker, ProtocolType};
 
 fn rasterise_svg(path: &std::path::Path, scale: f32) -> DynamicImage {
     let data = std::fs::read(path).unwrap();
@@ -76,7 +76,7 @@ fn main() -> io::Result<()> {
     let font = picker.font_size();
     let mut app = App::new(doc, "sample-assets/pictures.md".into());
     app.set_cell((font.width, font.height));
-    let mut set = PictureSet::sliced(picker, readmd::theme::bg_rgba());
+    let mut set = PictureSet::sliced(picker, mdpeek::theme::bg_rgba());
     set.insert(
         PictureKey::Image(assets.join("gradient.png")),
         image::open(assets.join("gradient.png")).unwrap(),
@@ -101,9 +101,9 @@ fn main() -> io::Result<()> {
                 app.set_overlays(if overlay { vec![popup] } else { vec![] });
                 app.render(f);
                 if overlay {
-                    let inner = readmd::ui::overlay::frame(f, popup, "Overlay");
+                    let inner = mdpeek::ui::overlay::frame(f, popup, "Overlay");
                     f.render_widget(
-                        Paragraph::new("o closes").style(readmd::theme::page()),
+                        Paragraph::new("o closes").style(mdpeek::theme::page()),
                         inner,
                     );
                 }

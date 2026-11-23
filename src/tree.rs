@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn file_target_never_fails_because_of_its_parent_directory() {
-        let file = PathBuf::from("/nonexistent-readmd-dir/a.md");
+        let file = PathBuf::from("/nonexistent-mdpeek-dir/a.md");
         let s = start(&StartTarget::File(file.clone())).unwrap();
         assert_eq!(s.initial_file, Some(file));
     }

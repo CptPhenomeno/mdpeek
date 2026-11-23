@@ -8,14 +8,14 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use mdpeek::doc::Document;
+use mdpeek::graphics::PictureSet;
+use mdpeek::picture_cache::PictureCache;
+use mdpeek::render_worker::RenderWorker;
+use mdpeek::ui::App;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui_image::picker::Picker;
-use readmd::doc::Document;
-use readmd::graphics::PictureSet;
-use readmd::picture_cache::PictureCache;
-use readmd::render_worker::RenderWorker;
-use readmd::ui::App;
 
 const WIDTH: u16 = 100;
 const HEIGHT: u16 = 700;
@@ -30,13 +30,13 @@ fn settled_app(text_mode: bool, halfblocks: bool) -> App {
     let mut app = App::new(doc, "showcase.md".into());
     app.set_cell((10, 20));
     if halfblocks {
-        let bg = readmd::theme::bg_rgba();
+        let bg = mdpeek::theme::bg_rgba();
         app.set_pictures(PictureSet::sliced(Picker::halfblocks(), bg));
     }
     app.set_text_mode(text_mode);
     let (tx, rx) = mpsc::channel();
     let worker = RenderWorker::new(PictureCache::with_default_limit(), tx, 4);
-    app.set_job_sink(Box::new(readmd::ui::pictures::WorkerSink(worker)));
+    app.set_job_sink(Box::new(mdpeek::ui::pictures::WorkerSink(worker)));
     app.resize(WIDTH, HEIGHT);
     let deadline = Instant::now() + Duration::from_secs(120);
     while app.has_outstanding() {

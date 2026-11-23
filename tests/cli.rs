@@ -4,18 +4,18 @@ use assert_cmd::Command;
 
 #[test]
 fn version_prints_crate_name_and_version() {
-    let out = Command::cargo_bin("readmd")
+    let out = Command::cargo_bin("mdpeek")
         .unwrap()
         .arg("--version")
         .output()
         .unwrap();
     assert!(out.status.success());
     let text = String::from_utf8(out.stdout).unwrap();
-    assert_eq!(text.trim(), format!("readmd {}", env!("CARGO_PKG_VERSION")));
+    assert_eq!(text.trim(), format!("mdpeek {}", env!("CARGO_PKG_VERSION")));
 }
 
 fn run(args: &[&std::ffi::OsStr]) -> std::process::Output {
-    Command::cargo_bin("readmd")
+    Command::cargo_bin("mdpeek")
         .unwrap()
         .args(args)
         .output()
@@ -64,12 +64,12 @@ fn unreadable_file_exits_2() {
     assert_eq!(out.status.code(), Some(2));
 }
 
-/// SPEC §5: `readmd missing.md` exits with code 2 and a clear message, and the
+/// SPEC §5: `mdpeek missing.md` exits with code 2 and a clear message, and the
 /// TUI is never entered (nothing on stdout, a one-line message on stderr).
 #[test]
-fn readmd_missing_md_exits_2_with_one_clear_stderr_line_and_no_tui_output() {
+fn mdpeek_missing_md_exits_2_with_one_clear_stderr_line_and_no_tui_output() {
     let dir = tmpdir();
-    let out = Command::cargo_bin("readmd")
+    let out = Command::cargo_bin("mdpeek")
         .unwrap()
         .current_dir(dir.path())
         .arg("missing.md")

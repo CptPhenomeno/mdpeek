@@ -1,4 +1,4 @@
-"""Runs readmd in a pty that never answers terminal queries, with auto detection,
+"""Runs mdpeek in a pty that never answers terminal queries, with auto detection,
 and checks that the first 'q' quits it (KB-84). Usage: quit_after_detect.py BINARY FILE.
 Exit 0 when it quits, 1 when the key was swallowed."""
 import fcntl, os, pty, select, struct, sys, termios, time

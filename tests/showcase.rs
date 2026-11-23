@@ -6,12 +6,12 @@
 
 use std::path::{Path, PathBuf};
 
-use readmd::diagram::{Rendered, render_svg};
-use readmd::doc::{Block, Document, Image, ImageTarget, Inline};
-use readmd::layout::{
+use mdpeek::diagram::{Rendered, render_svg};
+use mdpeek::doc::{Block, Document, Image, ImageTarget, Inline};
+use mdpeek::layout::{
     self, DiagramState, DiagramStates, Diagrams, Layout, PictureKey, PictureSizes, RowKind,
 };
-use readmd::tree::{self, Node};
+use mdpeek::tree::{self, Node};
 
 const CELL: (u16, u16) = (10, 20);
 /// Natural size of every rendered diagram in the snapshots.
@@ -179,7 +179,7 @@ fn the_showcase_document_model_contains_every_spec_3_3_element_kind() {
         );
     }
     let span =
-        |f: &dyn Fn(&readmd::doc::Span) -> bool| inline(&|i| matches!(i, Inline::Span(s) if f(s)));
+        |f: &dyn Fn(&mdpeek::doc::Span) -> bool| inline(&|i| matches!(i, Inline::Span(s) if f(s)));
     assert!(span(&|s| s.style.emphasis), "emphasis");
     assert!(span(&|s| s.style.strong), "strong");
     assert!(span(&|s| s.style.strikethrough), "strikethrough");
@@ -234,10 +234,10 @@ fn the_showcase_document_model_contains_every_spec_3_3_element_kind() {
     assert!(has(&|b| matches!(b, Block::Html(_))), "html block");
     assert!(has(&|b| matches!(b, Block::Diagram(_))), "diagram");
     let aligns =
-        |a: readmd::doc::Align| has(&|b| matches!(b, Block::Table(t) if t.align.contains(&a)));
-    assert!(aligns(readmd::doc::Align::Left), "left column");
-    assert!(aligns(readmd::doc::Align::Center), "centred column");
-    assert!(aligns(readmd::doc::Align::Right), "right column");
+        |a: mdpeek::doc::Align| has(&|b| matches!(b, Block::Table(t) if t.align.contains(&a)));
+    assert!(aligns(mdpeek::doc::Align::Left), "left column");
+    assert!(aligns(mdpeek::doc::Align::Center), "centred column");
+    assert!(aligns(mdpeek::doc::Align::Right), "right column");
 
     let images: Vec<&Image> = blocks
         .iter()
@@ -348,15 +348,15 @@ fn the_sidebar_tree_of_fixtures_hides_the_hidden_folder_and_the_gitignored_file(
 
 /// The showcase through the real `App` on a `TestBackend`, pictures drawn by the
 /// placeholder renderer (`#`). No job sink is set, so diagrams stay "Rendering diagram…".
-fn app_screen(app: &mut readmd::ui::App) -> ratatui::backend::TestBackend {
+fn app_screen(app: &mut mdpeek::ui::App) -> ratatui::backend::TestBackend {
     let mut terminal =
         ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).expect("test terminal");
     terminal.draw(|f| app.render(f)).expect("draw");
     terminal.backend().clone()
 }
 
-fn showcase_app() -> readmd::ui::App {
-    let mut app = readmd::ui::App::new(showcase(), "showcase.md".into());
+fn showcase_app() -> mdpeek::ui::App {
+    let mut app = mdpeek::ui::App::new(showcase(), "showcase.md".into());
     app.resize(80, 24);
     app
 }
