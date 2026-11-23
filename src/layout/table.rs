@@ -194,6 +194,9 @@ pub fn rows(table: &Table, index: usize, content: usize, units: &Counter<usize>)
     ));
     out.push(border(&widths, '├', '┼', '┤', index));
     for (n, row) in table.rows.iter().enumerate() {
+        if n > 0 {
+            out.push(border(&widths, '├', '┼', '┤', index));
+        }
         out.extend(band(
             &lay(n + 1, row, theme::body()),
             &widths,

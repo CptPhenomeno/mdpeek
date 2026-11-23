@@ -3,6 +3,10 @@ source: tests/showcase.rs
 expression: app_screen(&mut app)
 ---
 "┌──────────────────────────────────────────────────────────────────────────────┐"
+"│ Inline HTML such as <kbd>Ctrl</kbd> + <kbd>F</kbd> is also shown as dimmed   │"
+"│ raw text.                                                                    │"
+"│                                                                              │"
+"│ <!-- an HTML comment -->                                                     │"
 "│                                                                              │"
 "│                                                                              │"
 "│ 11. Images                                                                   │"
@@ -20,9 +24,5 @@ expression: app_screen(&mut app)
 "│                                                                              │"
 "│ An SVG (rasterised):                                                         │"
 "│                                                                              │"
-"│ [image not found: fixtures/assets/logo.svg] Logo sample                      │"
-"│                                                                              │"
-"│ An image inside a paragraph,                                                 │"
-"│                           ########################                           │"
 "└──────────────────────────────────────────────────────────────────────────────┘"
-" showcase.md                                                                58% "
+" showcase.md                                                                57% "

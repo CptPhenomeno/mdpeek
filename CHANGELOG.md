@@ -6,6 +6,10 @@ All notable changes to readmd are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Table body rows are separated by horizontal rules, one per logical row.
+
 ### Fixed
 
 - SVG text drawn blank on hosts without fontdb's default generic fonts: generic
