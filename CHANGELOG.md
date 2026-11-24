@@ -23,7 +23,7 @@ All notable changes to mdpeek are listed here. The format follows
   systems).
 - A release fails early when the tag does not match the `Cargo.toml` version
   or `CHANGELOG.md` has no section for it.
-- `make release NEW=<version>` bumps the version and the changelog, merges
+- `make release <version>` bumps the version and the changelog, merges
   develop into main and tags the release, ready to push.
 - The tool is now called mdpeek (formerly readmd): the crate, the binary, the
   `make dist` and release asset names (`mdpeek-<version>-<os>-<arch>`), the

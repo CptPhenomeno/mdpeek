@@ -1,5 +1,5 @@
 #!/bin/sh
-# Prepare a release from develop (run it through `make release NEW=<version>`):
+# Prepare a release from develop (run it through `make release <version>`):
 # bump Cargo.toml, Cargo.lock and CHANGELOG.md, run `make check`, commit on
 # develop, merge develop into main with --no-ff and tag v<version> on main.
 # Nothing is pushed: the push command is printed at the end.
@@ -13,7 +13,7 @@ die() {
 }
 
 new="${1:-}"
-[ -n "$new" ] || die "usage: make release NEW=<version>"
+[ -n "$new" ] || die "usage: make release <version>"
 check="${RELEASE_CHECK:-make check}"
 tag="v$new"
 
