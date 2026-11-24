@@ -269,7 +269,7 @@ fn release_with_a_failing_check_restores_the_files() {
 #[test]
 fn make_release_takes_the_version_as_an_argument() {
     let out = Command::new("make")
-        .args(["-n", "release", "9.9.9"])
+        .args(["--no-print-directory", "-n", "release", "9.9.9"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .unwrap();
