@@ -6,6 +6,8 @@ All notable changes to mdpeek are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-24
+
 ### Added
 
 - Dual license, MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`).
@@ -18,6 +20,13 @@ All notable changes to mdpeek are listed here. The format follows
   are dropped for now.
 - The release workflow uses actions on Node 24 (cache, upload-artifact,
   download-artifact).
+- Release binaries are static musl builds and run on any Linux, whatever its
+  glibc (the 0.1.1 binaries needed glibc 2.43 and did not start on older
+  systems).
+- A release fails early when the tag does not match the `Cargo.toml` version
+  or `CHANGELOG.md` has no section for it.
+- `make release <version>` bumps the version and the changelog, merges
+  develop into main and tags the release, ready to push.
 - The tool is now called mdpeek (formerly readmd): the crate, the binary, the
   `make dist` and release asset names (`mdpeek-<version>-<os>-<arch>`), the
   documentation and the fixtures all use the new name.

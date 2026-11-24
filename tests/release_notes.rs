@@ -43,6 +43,97 @@ fn notes_without_a_tag_fail_with_usage() {
 }
 
 #[test]
+fn notes_for_a_version_without_a_section_fail() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("CHANGELOG.md"), CHANGELOG).unwrap();
+    let out = notes(dir.path(), &["v0.3.0"]);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("no CHANGELOG.md section for 0.3.0"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+fn check_version(dir: &Path, args: &[&str]) -> Output {
+    Command::new("sh")
+        .arg(root().join(".github/scripts/check-version.sh"))
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap()
+}
+
+const MANIFEST: &str =
+    "[package]\nname = \"x\"\nversion = \"0.2.0\"\n\n[dependencies]\ny = { version = \"1.0.0\" }\n";
+
+#[test]
+fn version_check_accepts_the_tag_of_the_manifest_version() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Cargo.toml"), MANIFEST).unwrap();
+    assert!(check_version(dir.path(), &["v0.2.0"]).status.success());
+}
+
+#[test]
+fn version_check_rejects_a_tag_that_differs_from_the_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("Cargo.toml"), MANIFEST).unwrap();
+    let out = check_version(dir.path(), &["v0.2.1"]);
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr)
+            .contains("tag v0.2.1 does not match Cargo.toml version 0.2.0"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let usage = check_version(dir.path(), &[]);
+    assert!(!usage.status.success());
+    assert!(String::from_utf8_lossy(&usage.stderr).contains("usage: check-version.sh <tag>"));
+}
+
+/// Release binaries are static musl builds, so they run on any glibc (KB-104).
+#[cfg(target_os = "linux")]
+#[test]
+fn dist_builds_a_static_musl_binary() {
+    let dry = Command::new("make")
+        .args(["-n", "dist"])
+        .current_dir(root())
+        .output()
+        .unwrap();
+    let recipe = String::from_utf8_lossy(&dry.stdout);
+    let target = format!("{}-unknown-linux-musl", std::env::consts::ARCH);
+    assert!(
+        recipe.contains(&format!("rustup target add {target}")),
+        "{recipe}"
+    );
+    assert!(
+        recipe.contains(&format!("cargo build --release --locked --target {target}")),
+        "{recipe}"
+    );
+    assert!(
+        recipe.contains(&format!("target/{target}/release/mdpeek")),
+        "{recipe}"
+    );
+    assert!(recipe.contains("statically linked"), "{recipe}");
+}
+
+/// The tag, the Cargo.toml version and the CHANGELOG section are checked
+/// before anything is built (KB-104).
+#[test]
+fn deploy_workflow_checks_the_tag_before_building() {
+    let deploy = std::fs::read_to_string(root().join(".github/workflows/deploy.yml")).unwrap();
+    let check = deploy
+        .find("./.github/scripts/check-version.sh \"${GITHUB_REF_NAME}\"")
+        .expect("deploy.yml runs check-version.sh");
+    let notes = deploy
+        .find("./.github/scripts/release-notes.sh \"${GITHUB_REF_NAME}\" > /dev/null")
+        .expect("deploy.yml checks the release notes in the build job");
+    let build = deploy.find("run: make dist").unwrap();
+    assert!(check < build && notes < build);
+}
+
+#[test]
 fn dist_names_the_binary_for_the_host() {
     let out = Command::new("make")
         .args(["--no-print-directory", "-s", "dist-name"])

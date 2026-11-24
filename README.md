@@ -9,7 +9,8 @@ natively (`merman` and `resvg`): no Node.js, no Chromium, no network.
 ## Install
 
 Every release on GitHub ships prebuilt binaries for Linux (amd64 and arm64),
-named `mdpeek-<version>-linux-<arch>`, with a `checksums.txt`. On other
+named `mdpeek-<version>-linux-<arch>`, with a `checksums.txt`. They are static
+(musl) builds, so they run on any distribution whatever its glibc. On other
 systems, build from source.
 
 ### With mise
@@ -19,7 +20,7 @@ mise use -g github:CptPhenomeno/mdpeek
 ```
 
 mise downloads the binary that matches your platform from the latest GitHub
-release. Pin a version with `github:CptPhenomeno/mdpeek@0.1.0`.
+release. Pin a version with `github:CptPhenomeno/mdpeek@0.1.1`.
 
 ### By hand
 
@@ -49,7 +50,15 @@ Development targets:
 
 ```sh
 make check   # cargo fmt --check, clippy -D warnings, cargo test
-make dist    # release binary in dist/mdpeek-<version>-<os>-<arch>
+make dist    # static (musl) release binary in dist/mdpeek-<version>-<os>-<arch>
+```
+
+Releasing, from a clean `develop` in sync with `origin`:
+
+```sh
+make release 0.1.2       # bump Cargo.toml, Cargo.lock and CHANGELOG, run make check,
+                         # merge develop into main and tag v0.1.2 (nothing is pushed)
+git push --atomic origin develop main v0.1.2   # starts the release workflow
 ```
 
 ## Usage

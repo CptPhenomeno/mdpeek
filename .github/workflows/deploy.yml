@@ -20,6 +20,11 @@ jobs:
       - name: Checkout mdpeek
         uses: actions/checkout@v7.0.1
 
+      - name: Check tag, version and release notes
+        run: |
+          ./.github/scripts/check-version.sh "${GITHUB_REF_NAME}"
+          ./.github/scripts/release-notes.sh "${GITHUB_REF_NAME}" > /dev/null
+
       - name: Setup
         uses: ./.github/actions/setup-and-check
 
