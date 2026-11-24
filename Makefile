@@ -7,7 +7,7 @@ OUT     := $(DIST)/mdpeek-$(VERSION)-$(OS)-$(ARCH)
 # Release binaries are static musl builds: they need no glibc on the host.
 TARGET  := $(shell uname -m)-unknown-linux-musl
 
-.PHONY: check dist dist-name clean
+.PHONY: check dist dist-name release clean
 
 check:
 	cargo fmt --check
@@ -26,6 +26,10 @@ dist:
 ## dist-name: print the file name that dist produces
 dist-name:
 	@echo $(OUT)
+
+## release: bump to NEW, merge develop into main and tag it (no push)
+release:
+	sh .github/scripts/release.sh $(NEW)
 
 ## clean: remove the release binaries
 clean:

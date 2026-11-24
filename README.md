@@ -53,6 +53,14 @@ make check   # cargo fmt --check, clippy -D warnings, cargo test
 make dist    # static (musl) release binary in dist/mdpeek-<version>-<os>-<arch>
 ```
 
+Releasing, from a clean `develop` in sync with `origin`:
+
+```sh
+make release NEW=0.1.2   # bump Cargo.toml, Cargo.lock and CHANGELOG, run make check,
+                         # merge develop into main and tag v0.1.2 (nothing is pushed)
+git push --atomic origin develop main v0.1.2   # starts the release workflow
+```
+
 ## Usage
 
 ```
