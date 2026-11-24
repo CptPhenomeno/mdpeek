@@ -265,16 +265,15 @@ fn release_with_a_failing_check_restores_the_files() {
     assert_eq!(read(&r.work, "CHANGELOG.md"), CHANGELOG);
 }
 
+/// `make release 9.9.9`: the version is a plain argument, not a target.
 #[test]
-fn make_release_runs_the_script_with_new() {
+fn make_release_takes_the_version_as_an_argument() {
     let out = Command::new("make")
-        .args(["-n", "release", "NEW=9.9.9"])
+        .args(["-n", "release", "9.9.9"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .unwrap();
     let recipe = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        recipe.contains("sh .github/scripts/release.sh 9.9.9"),
-        "{recipe}"
-    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(recipe.trim(), "sh .github/scripts/release.sh 9.9.9");
 }
