@@ -1,4 +1,4 @@
-//! `make release NEW=<version>` (`.github/scripts/release.sh`): bumps the
+//! `make release <version>` (`.github/scripts/release.sh`): bumps the
 //! version, merges develop into main and tags it, never pushes (KB-104).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)] // panics are fine in tests
@@ -184,7 +184,7 @@ fn refused(r: &Repo, args: &[&str], check: &str, reason: &str) {
 #[test]
 fn release_refuses_a_missing_or_malformed_version() {
     let r = repo(CHANGELOG);
-    refused(&r, &[], "true", "usage: make release NEW=<version>");
+    refused(&r, &[], "true", "usage: make release <version>");
     refused(&r, &["v0.2.0"], "true", "0.2.0 style");
     refused(&r, &["0.2"], "true", "0.2.0 style");
 }
@@ -274,6 +274,15 @@ fn make_release_takes_the_version_as_an_argument() {
         .output()
         .unwrap();
     let recipe = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    assert_eq!(recipe.trim(), "sh .github/scripts/release.sh 9.9.9");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // `-n` also echoes the silent no-op recipe of the version word (`:`).
+    assert_eq!(
+        recipe.lines().next(),
+        Some("sh .github/scripts/release.sh 9.9.9"),
+        "{recipe}"
+    );
 }

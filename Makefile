@@ -27,9 +27,18 @@ dist:
 dist-name:
 	@echo $(OUT)
 
-## release: bump to NEW, merge develop into main and tag it (no push)
+# `make release 0.1.2`: the word after `release` is its version argument, so
+# it gets an empty rule instead of being built as a target.
+ifeq (release,$(firstword $(MAKECMDGOALS)))
+RELEASE_VERSION := $(word 2,$(MAKECMDGOALS))
+ifneq (,$(RELEASE_VERSION))
+$(eval $(RELEASE_VERSION):;@:)
+endif
+endif
+
+## release: bump to the given version, merge develop into main and tag it (no push)
 release:
-	sh .github/scripts/release.sh $(NEW)
+	sh .github/scripts/release.sh $(RELEASE_VERSION)
 
 ## clean: remove the release binaries
 clean:
