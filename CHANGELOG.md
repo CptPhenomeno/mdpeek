@@ -6,6 +6,8 @@ All notable changes to mdpeek are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-24
+
 ### Added
 
 - Dual license, MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`).
